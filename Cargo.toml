@@ -1,0 +1,29 @@
+[package]
+name = "d3"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Error Handling & Logging
+anyhow = "1.0.102"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+
+# Vulkan & Graphics
+ash = "0.38.0"
+ash-window = "0.13.0"
+vk-mem = "0.5.0"
+
+# Windowing
+winit = "0.30.13"
+raw-window-handle = "0.6.2"
+
+# Math & Architecture
+glam = "0.32.1"
+hecs = "0.11.0"
+
+# Egui Integration (UPDATED TO 0.33)
+egui = "0.33"
+egui-winit = "0.33"
+egui-ash-renderer = "0.11"
+memoffset = "0.9.1"
