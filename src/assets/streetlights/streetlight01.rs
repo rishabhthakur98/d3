@@ -10,8 +10,8 @@ pub fn spawn() -> GameObject {
     let spotlight = SpotLight {
         direction: Vec3::new(0.0, -1.0, 0.0), // Aiming DOWN
         color: [1.0, 0.9, 0.5],               // Warm yellow
-        intensity: 5.0,
-        range: 20.0,
+        intensity: 20.0,
+        range: 200.0,
         inner_cone_angle: 15.0_f32.to_radians(),
         outer_cone_angle: 30.0_f32.to_radians(),
         cast_shadows: true,

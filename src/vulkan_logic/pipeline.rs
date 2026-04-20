@@ -10,17 +10,17 @@ use super::context::VulkanContext;
 use crate::vulkan_logic::vertex_setup::VertexSetup;
 use crate::backface_cull_config::{DEFAULT_CULL_MODE, CULL_MODE_NONE, CULL_MODE_CW};
 
-/// A strict 128-byte memory block (2x Mat4) to safely transfer data to the shader
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PushConstants {
-    pub view_proj: glam::Mat4, // Camera View * Camera Lens pre-multiplied
-    pub model: glam::Mat4,     // Object transform
+    pub view_proj: glam::Mat4, 
+    pub model: glam::Mat4,     
 }
 
 pub struct VulkanPipeline {
     pub layout: vk::PipelineLayout,
     pub graphics_pipeline: vk::Pipeline,
+    pub descriptor_set_layout: vk::DescriptorSetLayout, // NEW
 }
 
 impl VulkanPipeline {
@@ -82,11 +82,10 @@ impl VulkanPipeline {
             .sample_shading_enable(false)
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        // --- NEW: Enable Depth Testing for 3D Physics ---
         let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::default()
-            .depth_test_enable(true)               // Check Z-Buffer
-            .depth_write_enable(true)              // Write to Z-Buffer
-            .depth_compare_op(vk::CompareOp::LESS) // Lower Z means it's closer to camera
+            .depth_test_enable(true)               
+            .depth_write_enable(true)              
+            .depth_compare_op(vk::CompareOp::LESS) 
             .depth_bounds_test_enable(false)
             .stencil_test_enable(false);
 
@@ -101,12 +100,27 @@ impl VulkanPipeline {
             .logic_op_enable(false)
             .attachments(std::slice::from_ref(&color_blend_attachment));
 
+        // --- NEW: Descriptor Set Layout for the Uniform Buffer ---
+        let ubo_binding = vk::DescriptorSetLayoutBinding::default()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT);
+
+        let ubo_layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+            .bindings(std::slice::from_ref(&ubo_binding));
+
+        let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&ubo_layout_info, None) }
+            .map_err(|e| anyhow!("Failed to create descriptor set layout: {}", e))?;
+
         let push_constant_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
-            .size(std::mem::size_of::<PushConstants>() as u32); // Strictly 128 bytes
+            .size(std::mem::size_of::<PushConstants>() as u32); 
 
+        // Apply the Descriptor Layout to the Pipeline Layout
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default()
+            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
             .push_constant_ranges(std::slice::from_ref(&push_constant_range));
 
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }
@@ -119,7 +133,7 @@ impl VulkanPipeline {
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterizer)
             .multisample_state(&multisampling)
-            .depth_stencil_state(&depth_stencil_state) // Attached Depth State!
+            .depth_stencil_state(&depth_stencil_state) 
             .color_blend_state(&color_blending)
             .dynamic_state(&dynamic_state)
             .layout(pipeline_layout)
@@ -135,7 +149,7 @@ impl VulkanPipeline {
             context.device.destroy_shader_module(frag_shader_module, None);
         }
 
-        Ok(Self { layout: pipeline_layout, graphics_pipeline })
+        Ok(Self { layout: pipeline_layout, graphics_pipeline, descriptor_set_layout })
     }
 
     fn read_shader_file(path: &str) -> Result<Vec<u8>> {
@@ -157,6 +171,7 @@ impl VulkanPipeline {
 
     pub fn destroy(&mut self, device: &ash::Device) {
         unsafe {
+            device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             device.destroy_pipeline(self.graphics_pipeline, None);
             device.destroy_pipeline_layout(self.layout, None);
         }
