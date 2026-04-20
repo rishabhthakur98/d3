@@ -2,8 +2,9 @@
 
 mod assets;
 mod geometrical_shapes;
-mod backface_cull_config; 
+mod backface_cull_config;
 mod game;
+mod light;
 mod vulkan_logic;
 mod frame_config; 
 

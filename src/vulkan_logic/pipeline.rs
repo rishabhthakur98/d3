@@ -15,7 +15,7 @@ use crate::backface_cull_config::{DEFAULT_CULL_MODE, CULL_MODE_NONE, CULL_MODE_C
 #[derive(Clone, Copy)]
 pub struct PushConstants {
     pub view_proj: glam::Mat4, // Camera View * Camera Lens pre-multiplied
-    pub model: glam::Mat4,     // Physical object location
+    pub model: glam::Mat4,     // Object transform
 }
 
 pub struct VulkanPipeline {
@@ -82,6 +82,14 @@ impl VulkanPipeline {
             .sample_shading_enable(false)
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
+        // --- NEW: Enable Depth Testing for 3D Physics ---
+        let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::default()
+            .depth_test_enable(true)               // Check Z-Buffer
+            .depth_write_enable(true)              // Write to Z-Buffer
+            .depth_compare_op(vk::CompareOp::LESS) // Lower Z means it's closer to camera
+            .depth_bounds_test_enable(false)
+            .stencil_test_enable(false);
+
         let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
             .color_write_mask(
                 vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | 
@@ -111,6 +119,7 @@ impl VulkanPipeline {
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterizer)
             .multisample_state(&multisampling)
+            .depth_stencil_state(&depth_stencil_state) // Attached Depth State!
             .color_blend_state(&color_blending)
             .dynamic_state(&dynamic_state)
             .layout(pipeline_layout)

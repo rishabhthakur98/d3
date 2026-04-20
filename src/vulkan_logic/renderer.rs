@@ -54,7 +54,6 @@ impl VulkanRenderer {
 
         let pipeline = VulkanPipeline::new(&context, swapchain_mgr.render_pass)?;
         
-        // Safely extract the allocator using pattern matching
         let allocator = match context.allocator.as_ref() {
             Some(alloc) => alloc,
             None => return Err(anyhow!("Vulkan memory allocator was not initialized")),
@@ -110,7 +109,6 @@ impl VulkanRenderer {
                 });
             }
 
-            // Safely extract the allocator via pattern matching
             let allocator = match self.context.allocator.as_ref() {
                 Some(alloc) => alloc,
                 None => return Err(anyhow!("Memory allocator missing during draw frame")),
@@ -171,7 +169,12 @@ impl VulkanRenderer {
                 .map_err(|e| anyhow!("Failed to begin command buffer: {}", e))?;
             
             let clear_color = if is_playing { [0.4, 0.6, 0.9, 1.0] } else { [0.0, 0.0, 0.0, 1.0] };
-            let clear_values = [vk::ClearValue { color: vk::ClearColorValue { float32: clear_color } }]; 
+            
+            // --- NEW: Clearing BOTH Color and Depth Buffer ---
+            let clear_values = [
+                vk::ClearValue { color: vk::ClearColorValue { float32: clear_color } },
+                vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } }, 
+            ]; 
             
             let render_pass_info = vk::RenderPassBeginInfo::default()
                 .render_pass(self.swapchain_mgr.render_pass)
@@ -185,7 +188,6 @@ impl VulkanRenderer {
                 vk::SubpassContents::INLINE
             );
 
-            // --- 3D RENDERING ---
             if is_playing && !draw_calls.is_empty() {
                 let viewport = vk::Viewport {
                     x: 0.0, y: 0.0,
@@ -304,7 +306,6 @@ impl Drop for VulkanRenderer {
         unsafe {
             let _ = self.context.device.device_wait_idle();
             
-            // Safely drop buffers if allocator is still valid
             if let Some(allocator) = self.context.allocator.as_ref() {
                 self.vertex_buffer.destroy(allocator);
                 self.index_buffer.destroy(allocator);
@@ -312,7 +313,7 @@ impl Drop for VulkanRenderer {
             
             self.pipeline.destroy(&self.context.device);
             self.sync.destroy(&self.context.device);
-            self.swapchain_mgr.destroy(&self.context.device);
+            self.swapchain_mgr.destroy(&self.context);
         }
     }
 }
