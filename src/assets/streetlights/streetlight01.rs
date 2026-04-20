@@ -1,15 +1,19 @@
+// src/assets/streetlights/streetlight01.rs
 use crate::geometrical_shapes::{cylinder::Cylinder, game_object::GameObject, transform::Transform};
 use crate::light::spot::SpotLight;
 use glam::Vec3;
 
-pub fn spawn() -> GameObject {
-    // Generate a tall, thin grey pole
+/// Returns the physical pole AND the standalone light source
+pub fn spawn() -> (GameObject, SpotLight) {
     let mesh = Cylinder::generate(0.2, 10.0, 12, [0.3, 0.3, 0.3, 1.0]);
+    let pole = GameObject::new(mesh, Transform::default());
     
-    // Attach a bright yellow spotlight aiming straight down
+    // Note: The map segment will be responsible for syncing the position of the light
+    // to the top of the physical pole.
     let spotlight = SpotLight {
-        direction: Vec3::new(0.0, -1.0, 0.0), // Aiming DOWN
-        color: [1.0, 0.9, 0.5],               // Warm yellow
+        position: Vec3::ZERO, 
+        direction: Vec3::new(0.0, -1.0, 0.0), 
+        color: [1.0, 0.9, 0.5],               
         intensity: 20.0,
         range: 200.0,
         inner_cone_angle: 15.0_f32.to_radians(),
@@ -17,5 +21,5 @@ pub fn spawn() -> GameObject {
         cast_shadows: true,
     };
 
-    GameObject::new(mesh, Transform::default()).with_spot_light(spotlight)
+    (pole, spotlight)
 }

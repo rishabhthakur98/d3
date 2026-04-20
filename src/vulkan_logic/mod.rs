@@ -6,4 +6,5 @@ pub mod sync_objects;
 pub mod swapchain_manager;
 pub mod pipeline;    
 pub mod gpu_buffers; 
+pub mod shadow_pass;
 pub mod renderer;
