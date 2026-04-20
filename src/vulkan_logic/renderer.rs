@@ -1,4 +1,5 @@
 // src/vulkan_logic/renderer.rs
+
 use anyhow::{anyhow, Result};
 use ash::vk;
 use egui_ash_renderer::Renderer as EguiRenderer;
@@ -15,9 +16,11 @@ use super::shadow_pass::{ShadowPass, SHADOW_MAP_DIM};
 
 use crate::geometrical_shapes::game_object::GameObject;
 
+// Import all independent light types!
 use crate::light::global::GlobalLight;
-use crate::light::spot::SpotLight; // NEW: Direct import of SpotLight
-use crate::light::ubo::{LightUBO, SpotLightData, GlobalLightData};
+use crate::light::spot::SpotLight; 
+use crate::light::point::PointLight;
+use crate::light::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData};
 
 struct DrawCall {
     index_start: u32,
@@ -102,7 +105,8 @@ impl VulkanRenderer {
         ambient_color: [f32; 3],
         ambient_intensity: f32,
         global_lights: &[GlobalLight],
-        spot_lights: &[SpotLight],         // NEW: Render receives completely detached spotlight array
+        spot_lights: &[SpotLight],         
+        point_lights: &[PointLight],       // NEW: Receive array of independent point lights   
         visible_objects: &[GameObject],    
     ) -> Result<()> {
         
@@ -117,9 +121,11 @@ impl VulkanRenderer {
                 camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 0.0),
                 global_count: 0,
                 spot_count: 0,
-                _pad: [0; 2],
+                point_count: 0,
+                _pad: 0,
                 global_lights: [GlobalLightData::default(); 4],
                 spot_lights: [SpotLightData::default(); 10],
+                point_lights: [PointLightData::default(); 10],
             };
 
             let mut shadow_caster_dir = None;
@@ -152,7 +158,7 @@ impl VulkanRenderer {
                 light_space_matrix = proj_matrix * view_matrix;
             }
 
-            // Iterate GameObjects ONLY to build geometry draw calls
+            // Iterate GameObjects purely for geometry
             for obj in visible_objects {
                 let vertex_offset = all_vertices.len() as i32;
                 let index_start = all_indices.len() as u32;
@@ -161,12 +167,10 @@ impl VulkanRenderer {
                 all_vertices.extend_from_slice(&obj.mesh.vertices);
                 all_indices.extend_from_slice(&obj.mesh.indices);
 
-                draw_calls.push(DrawCall {
-                    index_start, index_count, vertex_offset, transform: obj.transform.get_model_matrix(),
-                });
+                draw_calls.push(DrawCall { index_start, index_count, vertex_offset, transform: obj.transform.get_model_matrix() });
             }
 
-            // Iterate SpotLights independently!
+            // Iterate SpotLights independently
             for spot in spot_lights {
                 if ubo.spot_count < 10 {
                     let idx = ubo.spot_count as usize;
@@ -177,6 +181,18 @@ impl VulkanRenderer {
                         params: glam::Vec4::new(spot.outer_cone_angle, if spot.cast_shadows { 1.0 } else { 0.0 }, 0.0, 0.0),
                     };
                     ubo.spot_count += 1;
+                }
+            }
+
+            // Iterate PointLights independently
+            for point in point_lights {
+                if ubo.point_count < 10 {
+                    let idx = ubo.point_count as usize;
+                    ubo.point_lights[idx] = PointLightData {
+                        position: glam::Vec4::new(point.position.x, point.position.y, point.position.z, point.range),
+                        color: glam::Vec4::new(point.color[0], point.color[1], point.color[2], point.intensity),
+                    };
+                    ubo.point_count += 1;
                 }
             }
 

@@ -20,16 +20,23 @@ struct SpotLight {
     vec4 params;    
 };
 
+struct PointLight {
+    vec4 position; // xyz: Position, w: Range
+    vec4 color;    // xyz: Color, w: Intensity
+};
+
 layout(set = 0, binding = 0) uniform LightUBO {
     vec4 ambient_color;
     vec4 camera_pos;    
     
     uint global_count;
     uint spot_count;
-    uint pad1, pad2;
+    uint point_count; // Tracks active point lights
+    uint pad1;
     
     GlobalLight global_lights[4];
     SpotLight spot_lights[10];
+    PointLight point_lights[10];
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler2D shadowMap; 
@@ -70,14 +77,10 @@ void main() {
     // 1. Evaluate all Global Directional Lights (Suns/Moons)
     for(uint i = 0; i < ubo.global_count; i++) {
         GlobalLight light = ubo.global_lights[i];
-        
         vec3 sunDir = normalize(-light.direction.xyz); 
         float diff = max(dot(normal, sunDir), 0.0);
-        
         vec3 added_light = light.color.xyz * diff * light.direction.w;
         
-        // If this specific light cast shadows, multiply the shadow mask into it!
-        // We look at the 'w' component of color which we set to 1.0 if cast_shadows is true
         if (light.color.w > 0.5) {
             float shadow = CalculateShadow(fragLightSpacePos, normal, sunDir);
             added_light *= (1.0 - shadow);
@@ -86,7 +89,7 @@ void main() {
         global_lighting += added_light;
     }
     
-    // 2. Evaluate remaining local Spotlights
+    // 2. Evaluate Local Spotlights
     vec3 spot_lighting = vec3(0.0);
     for(uint i = 0; i < ubo.spot_count; i++) {
         SpotLight light = ubo.spot_lights[i];
@@ -96,7 +99,6 @@ void main() {
         if (distance < light.position.w) { 
             lightDir = normalize(lightDir);
             float diff = max(dot(normal, lightDir), 0.0);
-            
             float attenuation = clamp(1.0 - (distance / light.position.w), 0.0, 1.0);
             attenuation *= attenuation;
 
@@ -108,7 +110,27 @@ void main() {
         }
     }
 
-    // Combine Ambient + Global + Local Spotlights
-    vec3 result = (ambient + global_lighting + spot_lighting) * fragColor.xyz;
+    // 3. Evaluate Local Point Lights (NEW)
+    vec3 point_lighting = vec3(0.0);
+    for(uint i = 0; i < ubo.point_count; i++) {
+        PointLight light = ubo.point_lights[i];
+        vec3 lightDir = light.position.xyz - fragWorldPos;
+        float distance = length(lightDir);
+        
+        // Is the pixel within the radius of the lightbulb?
+        if (distance < light.position.w) { 
+            lightDir = normalize(lightDir);
+            float diff = max(dot(normal, lightDir), 0.0);
+            
+            // Quadratic falloff creates realistic smooth fading edges
+            float attenuation = clamp(1.0 - (distance / light.position.w), 0.0, 1.0);
+            attenuation *= attenuation; 
+            
+            point_lighting += light.color.xyz * diff * attenuation * light.color.w;
+        }
+    }
+
+    // Combine Ambient + Global + Spots + Points
+    vec3 result = (ambient + global_lighting + spot_lighting + point_lighting) * fragColor.xyz;
     outColor = vec4(result, fragColor.a);
 }

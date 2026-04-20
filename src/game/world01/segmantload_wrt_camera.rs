@@ -1,7 +1,8 @@
 // src/game/world01/segmantload_wrt_camera.rs
+
 use glam::Vec3;
 use crate::geometrical_shapes::game_object::GameObject;
-use crate::light::spot::SpotLight;
+use crate::light::{spot::SpotLight, point::PointLight};
 use super::{mapsegment01, mapsegment02};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -34,22 +35,15 @@ impl WorldStreamer {
     pub fn new() -> Self {
         Self {
             load_zones: vec![
-                SegmentTriggerZone {
-                    min_bounds: Vec3::new(-100.0, -100.0, -50.0), max_bounds: Vec3::new(100.0, 100.0, 50.0), active_segments: vec![SegmentId::Segment01],
-                },
-                SegmentTriggerZone {
-                    min_bounds: Vec3::new(-100.0, -100.0, 50.0), max_bounds: Vec3::new(100.0, 100.0, 150.0), active_segments: vec![SegmentId::Segment01, SegmentId::Segment02],
-                },
-                SegmentTriggerZone {
-                    min_bounds: Vec3::new(-100.0, -100.0, 150.0), max_bounds: Vec3::new(100.0, 100.0, 300.0), active_segments: vec![SegmentId::Segment02],
-                },
+                SegmentTriggerZone { min_bounds: Vec3::new(-100.0, -100.0, -50.0), max_bounds: Vec3::new(100.0, 100.0, 50.0), active_segments: vec![SegmentId::Segment01] },
+                SegmentTriggerZone { min_bounds: Vec3::new(-100.0, -100.0, 50.0), max_bounds: Vec3::new(100.0, 100.0, 150.0), active_segments: vec![SegmentId::Segment01, SegmentId::Segment02] },
+                SegmentTriggerZone { min_bounds: Vec3::new(-100.0, -100.0, 150.0), max_bounds: Vec3::new(100.0, 100.0, 300.0), active_segments: vec![SegmentId::Segment02] },
             ],
             currently_loaded_segments: Vec::new(),
         }
     }
 
-    /// Now returns a tuple of Objects AND Lights so the game engine has full decoupled lists
-    pub fn get_visible_objects(&mut self, camera_pos: Vec3) -> (Vec<GameObject>, Vec<SpotLight>) {
+    pub fn get_visible_objects(&mut self, camera_pos: Vec3) -> (Vec<GameObject>, Vec<SpotLight>, Vec<PointLight>) {
         let mut segments_needed = Vec::new();
 
         for zone in &self.load_zones {
@@ -64,16 +58,18 @@ impl WorldStreamer {
 
         let mut renderable_objects = Vec::new();
         let mut active_spots = Vec::new();
+        let mut active_points = Vec::new();
         
         for needed in segments_needed {
-            let (objs, spots) = match needed {
+            let (objs, spots, points) = match needed {
                 SegmentId::Segment01 => mapsegment01::load_segment(),
                 SegmentId::Segment02 => mapsegment02::load_segment(),
             };
             renderable_objects.extend(objs);
             active_spots.extend(spots);
+            active_points.extend(points);
         }
 
-        (renderable_objects, active_spots)
+        (renderable_objects, active_spots, active_points)
     }
 }
