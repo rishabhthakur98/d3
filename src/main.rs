@@ -1,4 +1,5 @@
 // src/main.rs
+
 mod assets;
 mod geometrical_shapes;
 mod backface_cull_config;
@@ -114,16 +115,12 @@ impl ApplicationHandler for EngineApp {
                                 self.input_state = game::world01::controls::InputState::default();
                                 self.last_update_time = Instant::now(); 
                                 
+                                // Load environment configuration dynamically when the world boots up!
                                 self.ambient_color = game::world01::ambient_light_config::AMBIENT_LIGHT_COLOR;
                                 self.ambient_intensity = game::world01::ambient_light_config::AMBIENT_LIGHT_INTENSITY;
                                 
-                                self.global_lights.clear();
-                                self.global_lights.push(light::global::GlobalLight {
-                                    direction: glam::Vec3::from_array(game::world01::ambient_light_config::SUN_DIRECTION),
-                                    color: game::world01::ambient_light_config::SUN_COLOR,
-                                    intensity: game::world01::ambient_light_config::SUN_INTENSITY,
-                                    cast_shadows: true, 
-                                });
+                                // NEW: Directly grab the entire array of lights from our new config function
+                                self.global_lights = game::world01::ambient_light_config::get_global_lights();
                                 
                                 if let Some(window) = &self.window {
                                     let _ = window.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked));
@@ -143,7 +140,6 @@ impl ApplicationHandler for EngineApp {
                 
                 if let (Some(renderer), Some(window), Some(state)) = (&mut self.renderer, &self.window, &mut self.egui_state) {
                     
-                    // NEW: Unpack the independent mesh list AND the active lights list
                     let (visible_objects, active_spots) = if self.is_playing {
                         game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
                         self.world_streamer.get_visible_objects(self.camera.position)
@@ -190,7 +186,7 @@ impl ApplicationHandler for EngineApp {
                         self.ambient_color,
                         self.ambient_intensity,
                         &self.global_lights,
-                        &active_spots, // Pass the standalone lights!
+                        &active_spots, 
                         &visible_objects
                     ) {
                         tracing::error!("Draw error: {}", e);
