@@ -1,4 +1,5 @@
 // src/main.rs
+mod skybox; 
 mod assets;
 mod geometrical_shapes;
 mod backface_cull_config;
@@ -37,6 +38,8 @@ struct EngineApp {
     ambient_intensity: f32,
     global_lights: Vec<light::global::GlobalLight>,
     
+    skybox_config: skybox::config::SkyboxConfig,
+    
     last_update_time: Instant, 
     last_frame_time: Instant,  
 }
@@ -48,6 +51,7 @@ impl ApplicationHandler for EngineApp {
                 .with_title("D3 Engine")
                 .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))); 
             
+            // 1. Attempt to build the window
             if let Ok(window) = event_loop.create_window(window_attributes) {
                 let window_arc = Arc::new(window);
                 self.window = Some(window_arc.clone());
@@ -59,11 +63,27 @@ impl ApplicationHandler for EngineApp {
                 );
                 self.egui_state = Some(state);
                 
-                if let Ok(ctx) = VulkanContext::new(window_arc.as_ref()) {
-                    let ctx_arc = Arc::new(ctx);
-                    self.context = Some(ctx_arc.clone());
-                    if let Ok(renderer) = VulkanRenderer::new(ctx_arc, window_arc.as_ref()) {
-                        self.renderer = Some(renderer);
+                // 2. Attempt to initialize the Vulkan Context safely
+                match VulkanContext::new(window_arc.as_ref()) {
+                    Ok(ctx) => {
+                        let ctx_arc = Arc::new(ctx);
+                        self.context = Some(ctx_arc.clone());
+                        
+                        // 3. Attempt to build the Renderer (This is where shader missing errors happen)
+                        match VulkanRenderer::new(ctx_arc, window_arc.as_ref()) {
+                            Ok(renderer) => {
+                                self.renderer = Some(renderer);
+                            }
+                            Err(e) => {
+                                // FIXED: Log the exact reason for failure and safely exit instead of hanging!
+                                tracing::error!("CRITICAL ERROR: Failed to initialize Vulkan Renderer: {:?}", e);
+                                event_loop.exit(); 
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("CRITICAL ERROR: Failed to initialize Vulkan Context: {:?}", e);
+                        event_loop.exit();
                     }
                 }
             }
@@ -117,6 +137,7 @@ impl ApplicationHandler for EngineApp {
                                 self.ambient_color = game::world01::ambient_light_config::AMBIENT_LIGHT_COLOR;
                                 self.ambient_intensity = game::world01::ambient_light_config::AMBIENT_LIGHT_INTENSITY;
                                 self.global_lights = game::world01::ambient_light_config::get_global_lights();
+                                self.skybox_config = game::world01::skybox_config::get_skybox_config();
                                 
                                 if let Some(window) = &self.window {
                                     let _ = window.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked));
@@ -136,7 +157,6 @@ impl ApplicationHandler for EngineApp {
                 
                 if let (Some(renderer), Some(window), Some(state)) = (&mut self.renderer, &self.window, &mut self.egui_state) {
                     
-                    // Unpack all 3 independently tracked physics lists!
                     let (visible_objects, active_spots, active_points) = if self.is_playing {
                         game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
                         self.world_streamer.get_visible_objects(self.camera.position)
@@ -184,8 +204,9 @@ impl ApplicationHandler for EngineApp {
                         self.ambient_intensity,
                         &self.global_lights,
                         &active_spots, 
-                        &active_points, // Pass the standalone Point Lights!
-                        &visible_objects
+                        &active_points, 
+                        &visible_objects,
+                        &self.skybox_config 
                     ) {
                         tracing::error!("Draw error: {}", e);
                     }
@@ -203,7 +224,13 @@ impl ApplicationHandler for EngineApp {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(window) = &self.window { window.request_redraw(); }
+        // Only request continuous redraws if the renderer actually successfully booted.
+        // This prevents the CPU from melting while doing an infinite black screen spin loop.
+        if self.renderer.is_some() {
+            if let Some(window) = &self.window { 
+                window.request_redraw(); 
+            }
+        }
     }
 }
 
@@ -221,6 +248,7 @@ fn main() -> Result<()> {
         camera: game::world01::camera::FreeformCamera::default(),
         
         ambient_color: [0.0, 0.0, 0.0], ambient_intensity: 0.0, global_lights: Vec::new(),
+        skybox_config: skybox::config::SkyboxConfig::default(),
         
         last_update_time: Instant::now(), last_frame_time: Instant::now(),
     };

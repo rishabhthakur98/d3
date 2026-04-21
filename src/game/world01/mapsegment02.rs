@@ -2,7 +2,6 @@
 
 use crate::assets::{grounds, buildings};
 use crate::geometrical_shapes::game_object::GameObject; 
-use crate::geometrical_shapes::transform::Transform;    
 use crate::light::{spot::SpotLight, point::PointLight};
 
 pub fn load_segment() -> (Vec<GameObject>, Vec<SpotLight>, Vec<PointLight>) {

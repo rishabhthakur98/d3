@@ -16,11 +16,14 @@ use super::shadow_pass::{ShadowPass, SHADOW_MAP_DIM};
 
 use crate::geometrical_shapes::game_object::GameObject;
 
-// Import all independent light types!
 use crate::light::global::GlobalLight;
 use crate::light::spot::SpotLight; 
 use crate::light::point::PointLight;
 use crate::light::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData};
+
+// UPDATED: Now pointing to the relocated module inside vulkan_logic
+use crate::vulkan_logic::skybox_renderer::SkyboxSystem;
+use crate::skybox::config::SkyboxConfig;
 
 struct DrawCall {
     index_start: u32,
@@ -37,6 +40,10 @@ pub struct VulkanRenderer {
     sync: SyncObjects,
     shadow_pass: ShadowPass, 
     pipeline: VulkanPipeline,
+    
+    // The dedicated subsystem for procedural sky rendering
+    skybox_system: SkyboxSystem, 
+    
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
     uniform_buffer: DynamicBuffer,
@@ -56,6 +63,9 @@ impl VulkanRenderer {
 
         let shadow_pass = ShadowPass::new(&context)?;
         let pipeline = VulkanPipeline::new(&context, swapchain_mgr.render_pass, shadow_pass.render_pass)?;
+        
+        // Initialize the Skybox System using the main render pass
+        let skybox_system = SkyboxSystem::new(&context, swapchain_mgr.render_pass)?;
         
         let allocator = match context.allocator.as_ref() {
             Some(alloc) => alloc,
@@ -89,7 +99,7 @@ impl VulkanRenderer {
         unsafe { context.device.update_descriptor_sets(&write_sets, &[]) };
 
         Ok(Self { 
-            is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
+            is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, skybox_system, vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
         })
     }
 
@@ -106,8 +116,9 @@ impl VulkanRenderer {
         ambient_intensity: f32,
         global_lights: &[GlobalLight],
         spot_lights: &[SpotLight],         
-        point_lights: &[PointLight],       // NEW: Receive array of independent point lights   
-        visible_objects: &[GameObject],    
+        point_lights: &[PointLight],       
+        visible_objects: &[GameObject], 
+        skybox_config: &SkyboxConfig,      
     ) -> Result<()> {
         
         let mut all_vertices = Vec::new();
@@ -158,7 +169,6 @@ impl VulkanRenderer {
                 light_space_matrix = proj_matrix * view_matrix;
             }
 
-            // Iterate GameObjects purely for geometry
             for obj in visible_objects {
                 let vertex_offset = all_vertices.len() as i32;
                 let index_start = all_indices.len() as u32;
@@ -170,7 +180,6 @@ impl VulkanRenderer {
                 draw_calls.push(DrawCall { index_start, index_count, vertex_offset, transform: obj.transform.get_model_matrix() });
             }
 
-            // Iterate SpotLights independently
             for spot in spot_lights {
                 if ubo.spot_count < 10 {
                     let idx = ubo.spot_count as usize;
@@ -184,7 +193,6 @@ impl VulkanRenderer {
                 }
             }
 
-            // Iterate PointLights independently
             for point in point_lights {
                 if ubo.point_count < 10 {
                     let idx = ubo.point_count as usize;
@@ -271,29 +279,39 @@ impl VulkanRenderer {
 
             self.context.device.cmd_begin_render_pass(self.sync.command_buffer, &render_pass_info, vk::SubpassContents::INLINE);
 
-            if is_playing && !draw_calls.is_empty() {
+            if is_playing {
                 let viewport = vk::Viewport { x: 0.0, y: 0.0, width: self.swapchain_mgr.extent.width as f32, height: self.swapchain_mgr.extent.height as f32, min_depth: 0.0, max_depth: 1.0 };
                 self.context.device.cmd_set_viewport(self.sync.command_buffer, 0, std::slice::from_ref(&viewport));
 
                 let scissor = vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: self.swapchain_mgr.extent };
                 self.context.device.cmd_set_scissor(self.sync.command_buffer, 0, std::slice::from_ref(&scissor));
 
-                self.context.device.cmd_bind_pipeline(self.sync.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.graphics_pipeline);
-                self.context.device.cmd_bind_vertex_buffers(self.sync.command_buffer, 0, &[self.vertex_buffer.buffer], &[0]);
-                self.context.device.cmd_bind_index_buffer(self.sync.command_buffer, self.index_buffer.buffer, 0, vk::IndexType::UINT32);
+                self.skybox_system.draw(
+                    &self.context,
+                    self.sync.command_buffer,
+                    &self.swapchain_mgr.extent,
+                    skybox_config,
+                    camera_view_matrix,
+                )?;
 
-                self.context.device.cmd_bind_descriptor_sets(self.sync.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
+                if !draw_calls.is_empty() {
+                    self.context.device.cmd_bind_pipeline(self.sync.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.graphics_pipeline);
+                    self.context.device.cmd_bind_vertex_buffers(self.sync.command_buffer, 0, &[self.vertex_buffer.buffer], &[0]);
+                    self.context.device.cmd_bind_index_buffer(self.sync.command_buffer, self.index_buffer.buffer, 0, vk::IndexType::UINT32);
 
-                let aspect = self.swapchain_mgr.extent.width as f32 / self.swapchain_mgr.extent.height as f32;
-                let mut proj = glam::Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 1000.0);
-                proj.y_axis.y *= -1.0; 
-                let view_proj = proj * camera_view_matrix;
+                    self.context.device.cmd_bind_descriptor_sets(self.sync.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
 
-                for call in draw_calls {
-                    let pc = PushConstants { view_proj, model: call.transform, light_space_matrix };
-                    let pc_bytes = std::slice::from_raw_parts(&pc as *const _ as *const u8, std::mem::size_of::<PushConstants>());
-                    self.context.device.cmd_push_constants(self.sync.command_buffer, self.pipeline.layout, vk::ShaderStageFlags::VERTEX, 0, pc_bytes);
-                    self.context.device.cmd_draw_indexed(self.sync.command_buffer, call.index_count, 1, call.index_start, call.vertex_offset, 0);
+                    let aspect = self.swapchain_mgr.extent.width as f32 / self.swapchain_mgr.extent.height as f32;
+                    let mut proj = glam::Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 1000.0);
+                    proj.y_axis.y *= -1.0; 
+                    let view_proj = proj * camera_view_matrix;
+
+                    for call in draw_calls {
+                        let pc = PushConstants { view_proj, model: call.transform, light_space_matrix };
+                        let pc_bytes = std::slice::from_raw_parts(&pc as *const _ as *const u8, std::mem::size_of::<PushConstants>());
+                        self.context.device.cmd_push_constants(self.sync.command_buffer, self.pipeline.layout, vk::ShaderStageFlags::VERTEX, 0, pc_bytes);
+                        self.context.device.cmd_draw_indexed(self.sync.command_buffer, call.index_count, 1, call.index_start, call.vertex_offset, 0);
+                    }
                 }
             }
 
@@ -336,6 +354,9 @@ impl Drop for VulkanRenderer {
                 self.index_buffer.destroy(allocator);
                 self.uniform_buffer.destroy(allocator); 
             }
+            
+            self.skybox_system.destroy(&self.context);
+            
             self.context.device.destroy_descriptor_pool(self.descriptor_pool, None); 
             self.shadow_pass.destroy(&self.context); 
             self.pipeline.destroy(&self.context.device);

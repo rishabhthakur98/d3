@@ -8,3 +8,4 @@ pub mod pipeline;
 pub mod gpu_buffers; 
 pub mod shadow_pass;
 pub mod renderer;
+pub mod skybox_renderer;
