@@ -1,11 +1,6 @@
 // src/vulkan_logic/mod.rs
-
-pub mod context;
-pub mod vertex_setup;
-pub mod sync_objects;
-pub mod swapchain_manager;
-pub mod pipeline;    
-pub mod gpu_buffers; 
-pub mod shadow_pass;
-pub mod renderer;
-pub mod skybox_renderer;
+pub mod core;
+pub mod memory;
+pub mod pipelines;
+pub mod passes;
+pub mod renderers;

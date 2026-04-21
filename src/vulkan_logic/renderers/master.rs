@@ -1,4 +1,4 @@
-// src/vulkan_logic/renderer.rs
+// src/vulkan_logic/renderers/master.rs
 
 use anyhow::{anyhow, Result};
 use ash::vk;
@@ -7,23 +7,24 @@ use egui_ash_renderer::Options as EguiOptions;
 use winit::window::Window;
 use std::sync::Arc;
 
-use super::context::VulkanContext;
-use super::swapchain_manager::SwapchainManager;
-use super::sync_objects::SyncObjects;
-use super::pipeline::{VulkanPipeline, PushConstants};
-use super::gpu_buffers::DynamicBuffer;
-use super::shadow_pass::{ShadowPass, SHADOW_MAP_DIM};
+use crate::vulkan_logic::core::context::VulkanContext;
+use crate::vulkan_logic::core::swapchain_manager::SwapchainManager;
+use crate::vulkan_logic::core::sync_objects::SyncObjects;
+use crate::vulkan_logic::pipelines::main_pipeline::{MainPipeline, PushConstants};
+use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
+use crate::vulkan_logic::passes::shadow_pass::{ShadowPass, SHADOW_MAP_DIM};
 
 use crate::geometrical_shapes::game_object::GameObject;
-
 use crate::light::global::GlobalLight;
 use crate::light::spot::SpotLight; 
 use crate::light::point::PointLight;
 use crate::light::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData};
 
-// UPDATED: Now pointing to the relocated module inside vulkan_logic
-use crate::vulkan_logic::skybox_renderer::SkyboxSystem;
+use crate::vulkan_logic::renderers::skybox_renderer::SkyboxSystem;
 use crate::skybox::config::SkyboxConfig;
+
+use crate::vulkan_logic::renderers::river_renderer::RiverSystem;
+use crate::water::config::RiverConfig;
 
 struct DrawCall {
     index_start: u32,
@@ -32,17 +33,17 @@ struct DrawCall {
     transform: glam::Mat4,
 }
 
-pub struct VulkanRenderer {
+pub struct MasterRenderer {
     pub is_resized: bool,
     pub egui_renderer: EguiRenderer,
     context: Arc<VulkanContext>,
     swapchain_mgr: SwapchainManager,
     sync: SyncObjects,
     shadow_pass: ShadowPass, 
-    pipeline: VulkanPipeline,
+    pipeline: MainPipeline,
     
-    // The dedicated subsystem for procedural sky rendering
     skybox_system: SkyboxSystem, 
+    river_system: RiverSystem, 
     
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
@@ -51,7 +52,7 @@ pub struct VulkanRenderer {
     descriptor_set: vk::DescriptorSet,
 }
 
-impl VulkanRenderer {
+impl MasterRenderer {
     pub fn new(context: Arc<VulkanContext>, window: &Window) -> Result<Self> {
         let swapchain_mgr = SwapchainManager::new(&context, window)?;
         let sync = SyncObjects::new(&context)?;
@@ -62,10 +63,14 @@ impl VulkanRenderer {
         ).map_err(|e| anyhow!("Failed to initialize egui: {}", e))?;
 
         let shadow_pass = ShadowPass::new(&context)?;
-        let pipeline = VulkanPipeline::new(&context, swapchain_mgr.render_pass, shadow_pass.render_pass)?;
         
-        // Initialize the Skybox System using the main render pass
+        // FIXED: Passing the shadow_pass.render_pass into the MainPipeline constructor!
+        let pipeline = MainPipeline::new(&context, swapchain_mgr.render_pass, shadow_pass.render_pass)?;
+        
         let skybox_system = SkyboxSystem::new(&context, swapchain_mgr.render_pass)?;
+        
+        let river_config = RiverConfig::default();
+        let river_system = RiverSystem::new(&context, swapchain_mgr.render_pass, &river_config)?;
         
         let allocator = match context.allocator.as_ref() {
             Some(alloc) => alloc,
@@ -99,7 +104,7 @@ impl VulkanRenderer {
         unsafe { context.device.update_descriptor_sets(&write_sets, &[]) };
 
         Ok(Self { 
-            is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, skybox_system, vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
+            is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, skybox_system, river_system, vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
         })
     }
 
@@ -118,13 +123,23 @@ impl VulkanRenderer {
         spot_lights: &[SpotLight],         
         point_lights: &[PointLight],       
         visible_objects: &[GameObject], 
-        skybox_config: &SkyboxConfig,      
+        skybox_config: &SkyboxConfig,
+        river_config: &RiverConfig, 
+        time: f32,                  
     ) -> Result<()> {
         
+        unsafe {
+            self.context.device.wait_for_fences(&[self.sync.in_flight], true, u64::MAX).map_err(|e| anyhow!("Wait for fences failed: {}", e))?;
+        }
+
         let mut all_vertices = Vec::new();
         let mut all_indices = Vec::new();
         let mut draw_calls = Vec::new();
         let mut light_space_matrix = glam::Mat4::IDENTITY;
+
+        let mut primary_sun_dir = glam::Vec3::new(0.0, -1.0, 0.0);
+        let mut primary_sun_color = [1.0, 1.0, 1.0];
+        let mut primary_sun_intensity = 0.0;
 
         if is_playing {
             let mut ubo = LightUBO {
@@ -152,6 +167,9 @@ impl VulkanRenderer {
                     
                     if gl.cast_shadows && shadow_caster_dir.is_none() {
                         shadow_caster_dir = Some(gl.direction.normalize());
+                        primary_sun_dir = gl.direction.normalize();
+                        primary_sun_color = gl.color;
+                        primary_sun_intensity = gl.intensity;
                     }
                 }
             }
@@ -160,12 +178,10 @@ impl VulkanRenderer {
                 let target = glam::Vec3::new(camera_pos.x, 0.0, camera_pos.z);
                 let light_pos = target - (sun_dir * 100.0); 
                 let up = glam::Vec3::new(0.0, 1.0, 0.0);
-                
                 let view_matrix = glam::Mat4::look_at_rh(light_pos, target, up);
                 let ortho_size = 50.0;
                 let mut proj_matrix = glam::Mat4::orthographic_rh(-ortho_size, ortho_size, -ortho_size, ortho_size, 0.1, 300.0);
                 proj_matrix.y_axis.y *= -1.0; 
-                
                 light_space_matrix = proj_matrix * view_matrix;
             }
 
@@ -176,7 +192,6 @@ impl VulkanRenderer {
 
                 all_vertices.extend_from_slice(&obj.mesh.vertices);
                 all_indices.extend_from_slice(&obj.mesh.indices);
-
                 draw_calls.push(DrawCall { index_start, index_count, vertex_offset, transform: obj.transform.get_model_matrix() });
             }
 
@@ -215,8 +230,6 @@ impl VulkanRenderer {
         }
         
         unsafe {
-            self.context.device.wait_for_fences(&[self.sync.in_flight], true, u64::MAX).map_err(|e| anyhow!("Wait for fences failed: {}", e))?;
-
             if !textures_delta.set.is_empty() {
                 self.egui_renderer.set_textures(self.context.graphics_queue, self.sync.command_pool, textures_delta.set.as_slice()).map_err(|e| anyhow!("Failed to upload egui textures: {}", e))?;
             }
@@ -294,17 +307,17 @@ impl VulkanRenderer {
                     camera_view_matrix,
                 )?;
 
+                let aspect = self.swapchain_mgr.extent.width as f32 / self.swapchain_mgr.extent.height as f32;
+                let mut proj = glam::Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 1000.0);
+                proj.y_axis.y *= -1.0; 
+                let view_proj = proj * camera_view_matrix;
+
                 if !draw_calls.is_empty() {
                     self.context.device.cmd_bind_pipeline(self.sync.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.graphics_pipeline);
                     self.context.device.cmd_bind_vertex_buffers(self.sync.command_buffer, 0, &[self.vertex_buffer.buffer], &[0]);
                     self.context.device.cmd_bind_index_buffer(self.sync.command_buffer, self.index_buffer.buffer, 0, vk::IndexType::UINT32);
 
                     self.context.device.cmd_bind_descriptor_sets(self.sync.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
-
-                    let aspect = self.swapchain_mgr.extent.width as f32 / self.swapchain_mgr.extent.height as f32;
-                    let mut proj = glam::Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 1000.0);
-                    proj.y_axis.y *= -1.0; 
-                    let view_proj = proj * camera_view_matrix;
 
                     for call in draw_calls {
                         let pc = PushConstants { view_proj, model: call.transform, light_space_matrix };
@@ -313,6 +326,18 @@ impl VulkanRenderer {
                         self.context.device.cmd_draw_indexed(self.sync.command_buffer, call.index_count, 1, call.index_start, call.vertex_offset, 0);
                     }
                 }
+
+                self.river_system.draw(
+                    &self.context,
+                    self.sync.command_buffer,
+                    river_config,
+                    view_proj,
+                    camera_pos,
+                    primary_sun_dir,
+                    primary_sun_color,
+                    primary_sun_intensity,
+                    time,
+                )?;
             }
 
             if !clipped_primitives.is_empty() {
@@ -345,7 +370,7 @@ impl VulkanRenderer {
     }
 }
 
-impl Drop for VulkanRenderer {
+impl Drop for MasterRenderer {
     fn drop(&mut self) {
         unsafe {
             let _ = self.context.device.device_wait_idle();
@@ -356,6 +381,7 @@ impl Drop for VulkanRenderer {
             }
             
             self.skybox_system.destroy(&self.context);
+            self.river_system.destroy(&self.context); 
             
             self.context.device.destroy_descriptor_pool(self.descriptor_pool, None); 
             self.shadow_pass.destroy(&self.context); 

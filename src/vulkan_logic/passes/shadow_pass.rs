@@ -1,11 +1,11 @@
-// src/vulkan_logic/shadow_pass.rs
+// src/vulkan_logic/passes/shadow_pass.rs
 
 use anyhow::{anyhow, Result};
 use ash::vk;
 use vk_mem::{Allocation, AllocationCreateInfo, MemoryUsage, Alloc};
-use super::context::VulkanContext;
+use crate::vulkan_logic::core::context::VulkanContext; // FIXED IMPORT
 
-pub const SHADOW_MAP_DIM: u32 = 2048; // 2K resolution for crisp shadows
+pub const SHADOW_MAP_DIM: u32 = 2048; 
 
 pub struct ShadowPass {
     pub render_pass: vk::RenderPass,
@@ -25,7 +25,6 @@ impl ShadowPass {
 
         let depth_format = vk::Format::D32_SFLOAT;
 
-        // 1. Create the invisible Depth Image
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D { width: SHADOW_MAP_DIM, height: SHADOW_MAP_DIM, depth: 1 })
@@ -34,7 +33,6 @@ impl ShadowPass {
             .format(depth_format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            // SAMPLED flag allows us to pass this image to the main Fragment Shader later!
             .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
             .samples(vk::SampleCountFlags::TYPE_1)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
@@ -59,16 +57,14 @@ impl ShadowPass {
         let depth_view = unsafe { context.device.create_image_view(&view_info, None) }
             .map_err(|e| anyhow!("Failed to create shadow map view: {}", e))?;
 
-        // 2. Create the Custom Render Pass
         let attachment = vk::AttachmentDescription::default()
             .format(depth_format)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE) // IMPORTANT: We must STORE it to read it later!
+            .store_op(vk::AttachmentStoreOp::STORE) 
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            // Final layout is READ_ONLY so the fragment shader can sample it as a texture
             .final_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL); 
 
         let attachment_ref = vk::AttachmentReference::default()
@@ -96,18 +92,19 @@ impl ShadowPass {
                 .dst_access_mask(vk::AccessFlags::SHADER_READ),
         ];
 
+        let attachments = [attachment];
         let render_pass_info = vk::RenderPassCreateInfo::default()
-            .attachments(std::slice::from_ref(&attachment))
+            .attachments(&attachments)
             .subpasses(std::slice::from_ref(&subpass))
             .dependencies(&dependencies);
 
         let render_pass = unsafe { context.device.create_render_pass(&render_pass_info, None) }
             .map_err(|e| anyhow!("Failed to create shadow render pass: {}", e))?;
 
-        // 3. Create the off-screen Framebuffer
+        let fb_attachments = [depth_view];
         let fb_info = vk::FramebufferCreateInfo::default()
             .render_pass(render_pass)
-            .attachments(std::slice::from_ref(&depth_view))
+            .attachments(&fb_attachments)
             .width(SHADOW_MAP_DIM)
             .height(SHADOW_MAP_DIM)
             .layers(1);
@@ -115,7 +112,6 @@ impl ShadowPass {
         let framebuffer = unsafe { context.device.create_framebuffer(&fb_info, None) }
             .map_err(|e| anyhow!("Failed to create shadow framebuffer: {}", e))?;
 
-        // 4. Create the Sampler (Defines how the GPU scales the texture if it's stretched)
         let sampler_info = vk::SamplerCreateInfo::default()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)

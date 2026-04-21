@@ -1,4 +1,4 @@
-// src/vulkan_logic/skybox_renderer.rs
+// src/vulkan_logic/renderers/skybox_renderer.rs
 
 use anyhow::{anyhow, Result};
 use ash::vk;
@@ -6,8 +6,8 @@ use std::fs::File;
 use std::io::Read;
 use std::ffi::CStr;
 
-use crate::vulkan_logic::context::VulkanContext;
-use crate::vulkan_logic::gpu_buffers::DynamicBuffer;
+use crate::vulkan_logic::core::context::VulkanContext; // FIXED IMPORT
+use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer; // FIXED IMPORT
 
 use crate::skybox::ubo::{SkyboxUBO, SkyboxDiscData, SkyboxCrescentData, SkyboxPushConstants};
 use crate::skybox::config::SkyboxConfig;
@@ -68,7 +68,6 @@ impl SkyboxSystem {
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }
             .map_err(|e| anyhow!("Failed to create skybox pipeline layout: {}", e))?;
 
-        // 1. Read shader binaries from the newly specified compiled_shaders directory
         let vert_shader_code = Self::read_shader_file("src/vulkan_logic/compiled_shaders/skybox.vert.spv")?;
         let frag_shader_code = Self::read_shader_file("src/vulkan_logic/compiled_shaders/skybox.frag.spv")?;
 
