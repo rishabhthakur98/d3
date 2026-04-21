@@ -30,7 +30,6 @@ impl RiverSystem {
     pub fn new(context: &VulkanContext, render_pass: vk::RenderPass, config: &RiverConfig) -> Result<Self> {
         let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
 
-        // AAA River Strip Generation
         let mesh = RiverMesh::generate(config.length, config.width, config.resolution_length, config.resolution_width, config.deep_color);
         let index_count = mesh.indices.len() as u32;
 
@@ -44,7 +43,6 @@ impl RiverSystem {
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
-        // FIXED: Extract array
         let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
         let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("{}", e))?;
@@ -66,7 +64,6 @@ impl RiverSystem {
         let frag_mod = Self::create_module(&context.device, &frag_code)?;
         let entry = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
 
-        // FIXED: Extract arrays
         let vert_bindings = [VertexSetup::get_binding_description()];
         let vert_attributes = VertexSetup::get_attribute_descriptions();
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default().vertex_binding_descriptions(&vert_bindings).vertex_attribute_descriptions(&vert_attributes);
@@ -80,7 +77,6 @@ impl RiverSystem {
             .blend_enable(true).src_color_blend_factor(vk::BlendFactor::SRC_ALPHA).dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .color_blend_op(vk::BlendOp::ADD).src_alpha_blend_factor(vk::BlendFactor::ONE).dst_alpha_blend_factor(vk::BlendFactor::ZERO).alpha_blend_op(vk::BlendOp::ADD);
 
-        // FIXED: Extract arrays for info building
         let shader_stages = [
             vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::VERTEX).module(vert_mod).name(entry), 
             vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::FRAGMENT).module(frag_mod).name(entry)
@@ -109,6 +105,7 @@ impl RiverSystem {
     pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, config: &RiverConfig, view_proj: glam::Mat4, cam_pos: glam::Vec3, sun_dir: glam::Vec3, sun_color: [f32; 3], intensity: f32, time: f32) -> Result<()> {
         let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
 
+        // Pack the new configuration values safely into the GPU UBO
         let ubo = RiverUBO {
             view_proj, camera_pos: glam::Vec4::new(cam_pos.x, cam_pos.y, cam_pos.z, 1.0),
             light_dir: glam::Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, intensity),
@@ -117,6 +114,18 @@ impl RiverSystem {
             shallow_color: glam::Vec4::from_array(config.shallow_color),
             foam_color: glam::Vec4::from_array(config.foam_color),
             params: glam::Vec4::new(time, config.flow_speed, config.wave_strength, 0.0),
+            advanced_params1: glam::Vec4::new(
+                config.specular_exponent, 
+                config.fresnel_power, 
+                config.normal_sample_dist, 
+                config.uv_scroll_speed
+            ),
+            sky_reflection_color: glam::Vec4::new(
+                config.sky_reflection_color[0],
+                config.sky_reflection_color[1],
+                config.sky_reflection_color[2],
+                config.foam_blend_strength
+            ),
         };
         self.ubo_buffer.upload_data(allocator, &[ubo])?;
 
