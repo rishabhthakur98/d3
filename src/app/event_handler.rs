@@ -12,7 +12,7 @@ use super::engine_state::EngineApp;
 use crate::game::menu::EngineAction;
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::renderers::master::MasterRenderer;
-use crate::{game, water, frame_config}; // FIXED: Removed unused `skybox`
+use crate::{game, water, frame_config}; 
 
 impl ApplicationHandler for EngineApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -137,7 +137,7 @@ impl ApplicationHandler for EngineApp {
                         self.is_playing, self.camera.position, self.camera.get_view_matrix(),
                         self.ambient_color, self.ambient_intensity, &self.global_lights,
                         &active_spots, &active_points, &visible_objects,
-                        &self.skybox_config, &self.river_config, current_time, 
+                        &self.skybox_config, &self.river_config, &self.fog_config, current_time, 
                     ) { tracing::error!("Draw error: {}", e); }
 
                     if frame_config::LIMIT_FRAMES {

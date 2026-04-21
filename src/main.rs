@@ -1,5 +1,6 @@
 // src/main.rs
 mod app;
+mod volumetrics; // NEW: Global volumetric atmospheric effects
 mod water; 
 mod skybox; 
 mod assets;

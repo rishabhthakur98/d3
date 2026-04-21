@@ -64,7 +64,6 @@ impl MasterRenderer {
 
         let shadow_pass = ShadowPass::new(&context)?;
         
-        // FIXED: Passing the shadow_pass.render_pass into the MainPipeline constructor!
         let pipeline = MainPipeline::new(&context, swapchain_mgr.render_pass, shadow_pass.render_pass)?;
         
         let skybox_system = SkyboxSystem::new(&context, swapchain_mgr.render_pass)?;
@@ -125,6 +124,7 @@ impl MasterRenderer {
         visible_objects: &[GameObject], 
         skybox_config: &SkyboxConfig,
         river_config: &RiverConfig, 
+        fog_config: &crate::volumetrics::fog_config::FogConfig,
         time: f32,                  
     ) -> Result<()> {
         
@@ -149,6 +149,10 @@ impl MasterRenderer {
                 spot_count: 0,
                 point_count: 0,
                 _pad: 0,
+                
+                fog_color: glam::Vec4::new(fog_config.color[0], fog_config.color[1], fog_config.color[2], fog_config.global_density),
+                fog_params: glam::Vec4::new(fog_config.height_falloff, fog_config.height_offset, fog_config.volumetric_scattering, 0.0),
+                
                 global_lights: [GlobalLightData::default(); 4],
                 spot_lights: [SpotLightData::default(); 10],
                 point_lights: [PointLightData::default(); 10],

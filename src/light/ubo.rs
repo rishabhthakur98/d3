@@ -47,10 +47,14 @@ pub struct LightUBO {
     
     pub global_count: u32,
     pub spot_count: u32,
-    pub point_count: u32,          // NEW: Count for Point Lights
+    pub point_count: u32,          
     pub _pad: u32,                 // Padding to reach next 16-byte boundary
+    
+    // AAA Volumetric Fog Data mapped perfectly into the 16-byte alignment
+    pub fog_color: glam::Vec4,     // xyz: Color, w: Global Density
+    pub fog_params: glam::Vec4,    // x: Height Falloff, y: Height Offset, z: Volumetric Scattering, w: Padding
     
     pub global_lights: [GlobalLightData; 4], // Supports 4 Suns/Moons
     pub spot_lights: [SpotLightData; 10],    // Supports 10 active Spotlights
-    pub point_lights: [PointLightData; 10],  // NEW: Supports 10 active Point Lights
+    pub point_lights: [PointLightData; 10],  // Supports 10 active Point Lights
 }
