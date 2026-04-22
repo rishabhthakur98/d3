@@ -32,9 +32,11 @@ use crate::smoke::emitter::SmokeEmitter;
 use crate::vulkan_logic::renderers::cloud_renderer::CloudSystem; 
 use crate::clouds::config::CloudConfig; 
 
-// NEW: Import Fire Logic
 use crate::vulkan_logic::renderers::fire_renderer::FireSystem;
 use crate::fire::emitter::FireEmitter;
+
+use crate::vulkan_logic::renderers::weather_renderer::WeatherSystem;
+use crate::weather::emitter::WeatherEmitter;
 
 struct DrawCall {
     index_start: u32,
@@ -56,7 +58,8 @@ pub struct MasterRenderer {
     cloud_system: CloudSystem, 
     river_system: RiverSystem, 
     smoke_system: SmokeSystem, 
-    fire_system: FireSystem, // NEW
+    fire_system: FireSystem,
+    weather_system: WeatherSystem,
     
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
@@ -86,7 +89,8 @@ impl MasterRenderer {
         let river_system = RiverSystem::new(&context, swapchain_mgr.render_pass, &river_config)?;
         
         let smoke_system = SmokeSystem::new(&context, swapchain_mgr.render_pass)?; 
-        let fire_system = FireSystem::new(&context, swapchain_mgr.render_pass)?; // NEW
+        let fire_system = FireSystem::new(&context, swapchain_mgr.render_pass)?; 
+        let weather_system = WeatherSystem::new(&context, swapchain_mgr.render_pass)?;
         
         let allocator = match context.allocator.as_ref() {
             Some(alloc) => alloc,
@@ -121,7 +125,7 @@ impl MasterRenderer {
 
         Ok(Self { 
             is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, 
-            skybox_system, cloud_system, river_system, smoke_system, fire_system, 
+            skybox_system, cloud_system, river_system, smoke_system, fire_system, weather_system,
             vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
         })
     }
@@ -146,7 +150,8 @@ impl MasterRenderer {
         river_config: &RiverConfig, 
         fog_config: &crate::volumetrics::fog_config::FogConfig,
         smoke_emitter: &SmokeEmitter, 
-        fire_emitter: &FireEmitter, // NEW
+        fire_emitter: &FireEmitter, 
+        weather_emitter: &WeatherEmitter,
         time: f32,                  
     ) -> Result<()> {
         
@@ -378,7 +383,6 @@ impl MasterRenderer {
                     time,
                 )?;
 
-                // NEW: Draw Fire Particles
                 self.fire_system.draw(
                     &self.context,
                     self.sync.command_buffer,
@@ -393,6 +397,16 @@ impl MasterRenderer {
                     smoke_emitter,
                     view_proj,
                     camera_view_matrix,
+                )?;
+
+                self.weather_system.draw(
+                    &self.context,
+                    self.sync.command_buffer,
+                    weather_emitter,
+                    view_proj,
+                    camera_view_matrix,
+                    camera_pos,
+                    time,
                 )?;
             }
 
@@ -440,7 +454,8 @@ impl Drop for MasterRenderer {
             self.cloud_system.destroy(&self.context); 
             self.river_system.destroy(&self.context); 
             self.smoke_system.destroy(&self.context); 
-            self.fire_system.destroy(&self.context); // NEW
+            self.fire_system.destroy(&self.context);
+            self.weather_system.destroy(&self.context);
             
             self.context.device.destroy_descriptor_pool(self.descriptor_pool, None); 
             self.shadow_pass.destroy(&self.context); 

@@ -14,7 +14,8 @@ use crate::clouds::config::CloudConfig;
 use crate::water::config::RiverConfig;
 use crate::volumetrics::fog_config::FogConfig; 
 use crate::smoke::emitter::SmokeEmitter; 
-use crate::fire::emitter::FireEmitter; // NEW
+use crate::fire::emitter::FireEmitter;
+use crate::weather::emitter::WeatherEmitter; // NEW
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::renderers::master::MasterRenderer;
@@ -43,7 +44,8 @@ pub struct EngineApp {
     pub fog_config: FogConfig, 
     
     pub smoke_emitter: SmokeEmitter, 
-    pub fire_emitter: FireEmitter, // NEW
+    pub fire_emitter: FireEmitter, 
+    pub weather_emitter: WeatherEmitter, // NEW
     
     pub engine_start_time: Instant, 
     pub last_update_time: Instant, 
@@ -63,7 +65,8 @@ impl Default for EngineApp {
             river_config: RiverConfig::default(),
             fog_config: FogConfig::default(), 
             smoke_emitter: SmokeEmitter::default(), 
-            fire_emitter: FireEmitter::default(), // NEW
+            fire_emitter: FireEmitter::default(), 
+            weather_emitter: WeatherEmitter::default(), // NEW
             engine_start_time: Instant::now(), last_update_time: Instant::now(), last_frame_time: Instant::now(),
         }
     }

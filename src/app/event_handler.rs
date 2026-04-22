@@ -16,16 +16,24 @@ use crate::{game, water, frame_config};
 impl ApplicationHandler for EngineApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_none() {
-            let window_attributes = Window::default_attributes().with_title("D3 Engine").with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))); 
+            let window_attributes = Window::default_attributes()
+                .with_title("D3 Engine")
+                .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))); 
+            
             if let Ok(window) = event_loop.create_window(window_attributes) {
                 let window_arc = Arc::new(window);
                 self.window = Some(window_arc.clone());
+                
                 let scale_factor = window_arc.scale_factor() as f32;
-                self.egui_state = Some(egui_winit::State::new(self.egui_ctx.clone(), egui::ViewportId::ROOT, window_arc.as_ref(), Some(scale_factor), None, None));
+                self.egui_state = Some(egui_winit::State::new(
+                    self.egui_ctx.clone(), egui::ViewportId::ROOT, window_arc.as_ref(), Some(scale_factor), None, None, 
+                ));
+                
                 match VulkanContext::new(window_arc.as_ref()) {
                     Ok(ctx) => {
                         let ctx_arc = Arc::new(ctx);
                         self.context = Some(ctx_arc.clone());
+                        
                         match MasterRenderer::new(ctx_arc, window_arc.as_ref()) {
                             Ok(renderer) => self.renderer = Some(renderer),
                             Err(e) => { tracing::error!("Failed to init Renderer: {:?}", e); event_loop.exit(); }
@@ -38,13 +46,20 @@ impl ApplicationHandler for EngineApp {
     }
 
     fn device_event(&mut self, _el: &ActiveEventLoop, _id: winit::event::DeviceId, event: DeviceEvent) {
-        if self.is_playing { if let DeviceEvent::MouseMotion { delta } = event { game::world01::controls::handle_mouse(&mut self.camera, delta.0, delta.1); } }
+        if self.is_playing {
+            if let DeviceEvent::MouseMotion { delta } = event {
+                game::world01::controls::handle_mouse(&mut self.camera, delta.0, delta.1);
+            }
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         if let (Some(state), Some(window)) = (&mut self.egui_state, &self.window) {
             let res = state.on_window_event(window.as_ref(), &event);
-            if !self.is_playing && res.consumed { if res.repaint { window.request_redraw(); } if !matches!(event, WindowEvent::Resized(_)) { return; } }
+            if !self.is_playing && res.consumed {
+                if res.repaint { window.request_redraw(); }
+                if !matches!(event, WindowEvent::Resized(_)) { return; }
+            }
         }
 
         match event {
@@ -54,7 +69,8 @@ impl ApplicationHandler for EngineApp {
                 let is_pressed = state == ElementState::Pressed;
                 if self.is_playing {
                     if let EngineAction::ReturnToMenu = game::world01::controls::handle_keyboard(&mut self.input_state, keycode, is_pressed) {
-                        self.is_playing = false; self.menu.state = game::menu::MenuState::Main;
+                        self.is_playing = false;
+                        self.menu.state = game::menu::MenuState::Main;
                         if let Some(window) = &self.window { let _ = window.set_cursor_grab(CursorGrabMode::None); window.set_cursor_visible(true); }
                     }
                 } else if is_pressed {
@@ -79,10 +95,12 @@ impl ApplicationHandler for EngineApp {
                                 smoke_cfg.position = glam::Vec3::new(5.0, 4.0, -5.0); 
                                 self.smoke_emitter = crate::smoke::emitter::SmokeEmitter::new(smoke_cfg);
 
-                                // NEW: Spawn a blazing bonfire near the center of the town
                                 let mut fire_cfg = crate::fire::config::FireConfig::default();
                                 fire_cfg.position = glam::Vec3::new(-2.0, -1.0, 3.0); 
                                 self.fire_emitter = crate::fire::emitter::FireEmitter::new(fire_cfg);
+
+                                // NEW: Set heavy rain!
+                                self.weather_emitter.set_weather(crate::weather::config::WeatherConfig::heavy_rain());
 
                                 if let Some(w) = &self.window { let _ = w.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| w.set_cursor_grab(CursorGrabMode::Locked)); w.set_cursor_visible(false); }
                             }
@@ -102,7 +120,8 @@ impl ApplicationHandler for EngineApp {
                     let (visible_objects, active_spots, active_points) = if self.is_playing {
                         game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
                         self.smoke_emitter.tick(delta_time); 
-                        self.fire_emitter.tick(delta_time); // NEW: Tick physics for the fire
+                        self.fire_emitter.tick(delta_time); 
+                        self.weather_emitter.tick(delta_time); // NEW
                         self.world_streamer.get_visible_objects(self.camera.position)
                     } else { (Vec::new(), Vec::new(), Vec::new()) };
 
@@ -136,7 +155,8 @@ impl ApplicationHandler for EngineApp {
                         &self.river_config, 
                         &self.fog_config, 
                         &self.smoke_emitter, 
-                        &self.fire_emitter, // NEW
+                        &self.fire_emitter, 
+                        &self.weather_emitter, // NEW
                         current_time, 
                     ) { tracing::error!("Draw error: {}", e); }
 
