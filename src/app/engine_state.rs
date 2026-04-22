@@ -1,5 +1,4 @@
 // src/app/engine_state.rs
-
 use std::sync::Arc;
 use std::time::Instant;
 use winit::window::Window;
@@ -9,11 +8,13 @@ use crate::game::world01::controls::InputState;
 use crate::game::world01::segmantload_wrt_camera::WorldStreamer;
 use crate::game::world01::camera::FreeformCamera;
 use crate::light::global::GlobalLight;
+
 use crate::skybox::config::SkyboxConfig;
+use crate::clouds::config::CloudConfig;
 use crate::water::config::RiverConfig;
 use crate::volumetrics::fog_config::FogConfig; 
 use crate::smoke::emitter::SmokeEmitter; 
-use crate::clouds::config::CloudConfig; // NEW
+use crate::fire::emitter::FireEmitter; // NEW
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::renderers::master::MasterRenderer;
@@ -37,11 +38,12 @@ pub struct EngineApp {
     pub global_lights: Vec<GlobalLight>,
     
     pub skybox_config: SkyboxConfig,
-    pub cloud_config: CloudConfig, // NEW
+    pub cloud_config: CloudConfig,
     pub river_config: RiverConfig, 
     pub fog_config: FogConfig, 
     
     pub smoke_emitter: SmokeEmitter, 
+    pub fire_emitter: FireEmitter, // NEW
     
     pub engine_start_time: Instant, 
     pub last_update_time: Instant, 
@@ -57,10 +59,11 @@ impl Default for EngineApp {
             world_streamer: WorldStreamer::new(), camera: FreeformCamera::default(),
             ambient_color: [0.0, 0.0, 0.0], ambient_intensity: 0.0, global_lights: Vec::new(),
             skybox_config: SkyboxConfig::default(), 
-            cloud_config: CloudConfig::default(), // NEW
+            cloud_config: CloudConfig::default(),
             river_config: RiverConfig::default(),
             fog_config: FogConfig::default(), 
             smoke_emitter: SmokeEmitter::default(), 
+            fire_emitter: FireEmitter::default(), // NEW
             engine_start_time: Instant::now(), last_update_time: Instant::now(), last_frame_time: Instant::now(),
         }
     }

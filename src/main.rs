@@ -5,6 +5,7 @@ mod water;
 mod skybox;
 mod smoke; 
 mod clouds; 
+mod fire; 
 mod assets;
 mod geometrical_shapes;
 mod backface_cull_config;

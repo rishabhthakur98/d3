@@ -29,8 +29,12 @@ use crate::water::config::RiverConfig;
 use crate::vulkan_logic::renderers::smoke_renderer::SmokeSystem;
 use crate::smoke::emitter::SmokeEmitter;
 
-use crate::vulkan_logic::renderers::cloud_renderer::CloudSystem; // NEW
-use crate::clouds::config::CloudConfig; // NEW
+use crate::vulkan_logic::renderers::cloud_renderer::CloudSystem; 
+use crate::clouds::config::CloudConfig; 
+
+// NEW: Import Fire Logic
+use crate::vulkan_logic::renderers::fire_renderer::FireSystem;
+use crate::fire::emitter::FireEmitter;
 
 struct DrawCall {
     index_start: u32,
@@ -49,9 +53,10 @@ pub struct MasterRenderer {
     pipeline: MainPipeline,
     
     skybox_system: SkyboxSystem, 
-    cloud_system: CloudSystem, // NEW
+    cloud_system: CloudSystem, 
     river_system: RiverSystem, 
     smoke_system: SmokeSystem, 
+    fire_system: FireSystem, // NEW
     
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
@@ -75,12 +80,13 @@ impl MasterRenderer {
         let pipeline = MainPipeline::new(&context, swapchain_mgr.render_pass, shadow_pass.render_pass)?;
         
         let skybox_system = SkyboxSystem::new(&context, swapchain_mgr.render_pass)?;
-        let cloud_system = CloudSystem::new(&context, swapchain_mgr.render_pass)?; // NEW
+        let cloud_system = CloudSystem::new(&context, swapchain_mgr.render_pass)?; 
         
         let river_config = RiverConfig::default();
         let river_system = RiverSystem::new(&context, swapchain_mgr.render_pass, &river_config)?;
         
         let smoke_system = SmokeSystem::new(&context, swapchain_mgr.render_pass)?; 
+        let fire_system = FireSystem::new(&context, swapchain_mgr.render_pass)?; // NEW
         
         let allocator = match context.allocator.as_ref() {
             Some(alloc) => alloc,
@@ -115,7 +121,7 @@ impl MasterRenderer {
 
         Ok(Self { 
             is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, 
-            skybox_system, cloud_system, river_system, smoke_system, 
+            skybox_system, cloud_system, river_system, smoke_system, fire_system, 
             vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
         })
     }
@@ -136,10 +142,11 @@ impl MasterRenderer {
         point_lights: &[PointLight],       
         visible_objects: &[GameObject], 
         skybox_config: &SkyboxConfig,
-        cloud_config: &CloudConfig, // NEW
+        cloud_config: &CloudConfig, 
         river_config: &RiverConfig, 
         fog_config: &crate::volumetrics::fog_config::FogConfig,
         smoke_emitter: &SmokeEmitter, 
+        fire_emitter: &FireEmitter, // NEW
         time: f32,                  
     ) -> Result<()> {
         
@@ -318,7 +325,6 @@ impl MasterRenderer {
                 let scissor = vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent: self.swapchain_mgr.extent };
                 self.context.device.cmd_set_scissor(self.sync.command_buffer, 0, std::slice::from_ref(&scissor));
 
-                // 1. Skybox
                 self.skybox_system.draw(
                     &self.context,
                     self.sync.command_buffer,
@@ -333,7 +339,6 @@ impl MasterRenderer {
                 let view_proj = proj * camera_view_matrix;
                 let inv_view_proj = view_proj.inverse();
 
-                // 2. Volumetric Clouds
                 self.cloud_system.draw(
                     &self.context,
                     self.sync.command_buffer,
@@ -346,7 +351,6 @@ impl MasterRenderer {
                     time,
                 )?;
 
-                // 3. Opaque Geometry
                 if !draw_calls.is_empty() {
                     self.context.device.cmd_bind_pipeline(self.sync.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline.graphics_pipeline);
                     self.context.device.cmd_bind_vertex_buffers(self.sync.command_buffer, 0, &[self.vertex_buffer.buffer], &[0]);
@@ -362,7 +366,6 @@ impl MasterRenderer {
                     }
                 }
 
-                // 4. River
                 self.river_system.draw(
                     &self.context,
                     self.sync.command_buffer,
@@ -375,7 +378,15 @@ impl MasterRenderer {
                     time,
                 )?;
 
-                // 5. Smoke Particles
+                // NEW: Draw Fire Particles
+                self.fire_system.draw(
+                    &self.context,
+                    self.sync.command_buffer,
+                    fire_emitter,
+                    view_proj,
+                    camera_view_matrix,
+                )?;
+
                 self.smoke_system.draw(
                     &self.context,
                     self.sync.command_buffer,
@@ -426,9 +437,10 @@ impl Drop for MasterRenderer {
             }
             
             self.skybox_system.destroy(&self.context);
-            self.cloud_system.destroy(&self.context);
+            self.cloud_system.destroy(&self.context); 
             self.river_system.destroy(&self.context); 
             self.smoke_system.destroy(&self.context); 
+            self.fire_system.destroy(&self.context); // NEW
             
             self.context.device.destroy_descriptor_pool(self.descriptor_pool, None); 
             self.shadow_pass.destroy(&self.context); 
