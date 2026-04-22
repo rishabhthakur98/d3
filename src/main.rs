@@ -1,14 +1,15 @@
 // src/main.rs
 mod app;
-mod volumetrics; // NEW: Global volumetric atmospheric effects
+mod volumetrics;
 mod water; 
-mod skybox; 
+mod skybox;
+mod smoke; 
+mod clouds; 
 mod assets;
 mod geometrical_shapes;
 mod backface_cull_config;
 mod game;
 mod light;
-mod smoke;
 mod vulkan_logic;
 mod frame_config; 
 

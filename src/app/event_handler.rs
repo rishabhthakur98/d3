@@ -92,7 +92,6 @@ impl ApplicationHandler for EngineApp {
                                 river.position = glam::Vec3::new(0.0, -1.5, 0.0);
                                 self.river_config = river;
 
-                                // NEW: Spawn smoke from building02!
                                 let mut smoke_cfg = crate::smoke::config::SmokeConfig::default();
                                 smoke_cfg.position = glam::Vec3::new(5.0, 4.0, -5.0); 
                                 self.smoke_emitter = crate::smoke::emitter::SmokeEmitter::new(smoke_cfg);
@@ -114,10 +113,7 @@ impl ApplicationHandler for EngineApp {
                 if let (Some(renderer), Some(window), Some(state)) = (&mut self.renderer, &self.window, &mut self.egui_state) {
                     let (visible_objects, active_spots, active_points) = if self.is_playing {
                         game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
-                        
-                        // NEW: Tick the CPU physics engine for the smoke particles every frame
                         self.smoke_emitter.tick(delta_time); 
-                        
                         self.world_streamer.get_visible_objects(self.camera.position)
                     } else { (Vec::new(), Vec::new(), Vec::new()) };
 
@@ -146,8 +142,11 @@ impl ApplicationHandler for EngineApp {
                         self.is_playing, self.camera.position, self.camera.get_view_matrix(),
                         self.ambient_color, self.ambient_intensity, &self.global_lights,
                         &active_spots, &active_points, &visible_objects,
-                        &self.skybox_config, &self.river_config, &self.fog_config, 
-                        &self.smoke_emitter, // NEW
+                        &self.skybox_config, 
+                        &self.cloud_config, // NEW
+                        &self.river_config, 
+                        &self.fog_config, 
+                        &self.smoke_emitter, 
                         current_time, 
                     ) { tracing::error!("Draw error: {}", e); }
 
