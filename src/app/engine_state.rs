@@ -11,20 +11,15 @@ use crate::game::world01::camera::FreeformCamera;
 use crate::light::global::GlobalLight;
 use crate::skybox::config::SkyboxConfig;
 use crate::water::config::RiverConfig;
-use crate::volumetrics::fog_config::FogConfig; // NEW
+use crate::volumetrics::fog_config::FogConfig; 
+use crate::smoke::emitter::SmokeEmitter; // NEW
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::renderers::master::MasterRenderer;
 
-/// Holds the entire state of the engine.
 pub struct EngineApp {
-    // CRITICAL: Rust drops fields in the order they are declared (Top to Bottom).
-    // To prevent Segmentation Faults, we MUST drop in this exact order:
-    // 1. Renderer (Cleans up GPU buffers and pipelines)
     pub renderer: Option<MasterRenderer>,
-    // 2. Vulkan Context (Destroys the Vulkan Instance and Surface)
     pub context: Option<Arc<VulkanContext>>,
-    // 3. Window (Destroys the OS Window. If this drops before Vulkan, it segfaults!)
     pub window: Option<Arc<Window>>,
     
     pub menu: MenuSystem,
@@ -42,7 +37,9 @@ pub struct EngineApp {
     
     pub skybox_config: SkyboxConfig,
     pub river_config: RiverConfig, 
-    pub fog_config: FogConfig, // NEW
+    pub fog_config: FogConfig, 
+    
+    pub smoke_emitter: SmokeEmitter, // NEW
     
     pub engine_start_time: Instant, 
     pub last_update_time: Instant, 
@@ -58,7 +55,8 @@ impl Default for EngineApp {
             world_streamer: WorldStreamer::new(), camera: FreeformCamera::default(),
             ambient_color: [0.0, 0.0, 0.0], ambient_intensity: 0.0, global_lights: Vec::new(),
             skybox_config: SkyboxConfig::default(), river_config: RiverConfig::default(),
-            fog_config: FogConfig::default(), // NEW
+            fog_config: FogConfig::default(), 
+            smoke_emitter: SmokeEmitter::default(), // NEW
             engine_start_time: Instant::now(), last_update_time: Instant::now(), last_frame_time: Instant::now(),
         }
     }

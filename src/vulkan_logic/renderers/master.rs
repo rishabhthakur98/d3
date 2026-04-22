@@ -26,6 +26,10 @@ use crate::skybox::config::SkyboxConfig;
 use crate::vulkan_logic::renderers::river_renderer::RiverSystem;
 use crate::water::config::RiverConfig;
 
+// NEW: Smoke logic imports
+use crate::vulkan_logic::renderers::smoke_renderer::SmokeSystem;
+use crate::smoke::emitter::SmokeEmitter;
+
 struct DrawCall {
     index_start: u32,
     index_count: u32,
@@ -44,6 +48,7 @@ pub struct MasterRenderer {
     
     skybox_system: SkyboxSystem, 
     river_system: RiverSystem, 
+    smoke_system: SmokeSystem, // NEW
     
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
@@ -70,6 +75,8 @@ impl MasterRenderer {
         
         let river_config = RiverConfig::default();
         let river_system = RiverSystem::new(&context, swapchain_mgr.render_pass, &river_config)?;
+        
+        let smoke_system = SmokeSystem::new(&context, swapchain_mgr.render_pass)?; // NEW
         
         let allocator = match context.allocator.as_ref() {
             Some(alloc) => alloc,
@@ -103,7 +110,9 @@ impl MasterRenderer {
         unsafe { context.device.update_descriptor_sets(&write_sets, &[]) };
 
         Ok(Self { 
-            is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, skybox_system, river_system, vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
+            is_resized: false, egui_renderer, context, swapchain_mgr, sync, shadow_pass, pipeline, 
+            skybox_system, river_system, smoke_system, 
+            vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
         })
     }
 
@@ -125,6 +134,7 @@ impl MasterRenderer {
         skybox_config: &SkyboxConfig,
         river_config: &RiverConfig, 
         fog_config: &crate::volumetrics::fog_config::FogConfig,
+        smoke_emitter: &SmokeEmitter, // NEW
         time: f32,                  
     ) -> Result<()> {
         
@@ -342,6 +352,15 @@ impl MasterRenderer {
                     primary_sun_intensity,
                     time,
                 )?;
+
+                // NEW: Draw translucent smoke particles
+                self.smoke_system.draw(
+                    &self.context,
+                    self.sync.command_buffer,
+                    smoke_emitter,
+                    view_proj,
+                    camera_view_matrix,
+                )?;
             }
 
             if !clipped_primitives.is_empty() {
@@ -386,6 +405,7 @@ impl Drop for MasterRenderer {
             
             self.skybox_system.destroy(&self.context);
             self.river_system.destroy(&self.context); 
+            self.smoke_system.destroy(&self.context); // NEW
             
             self.context.device.destroy_descriptor_pool(self.descriptor_pool, None); 
             self.shadow_pass.destroy(&self.context); 

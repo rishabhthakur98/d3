@@ -2,3 +2,4 @@
 pub mod master;
 pub mod river_renderer;
 pub mod skybox_renderer;
+pub mod smoke_renderer;

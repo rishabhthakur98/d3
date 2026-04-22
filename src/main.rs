@@ -8,6 +8,7 @@ mod geometrical_shapes;
 mod backface_cull_config;
 mod game;
 mod light;
+mod smoke;
 mod vulkan_logic;
 mod frame_config; 
 
