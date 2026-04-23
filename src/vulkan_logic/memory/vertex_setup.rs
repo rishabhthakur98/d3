@@ -1,7 +1,7 @@
-// src/vulkan_logic/vertex_setup.rs
+// src/vulkan_logic/memory/vertex_setup.rs
 
 use ash::vk;
-use crate::geometrical_shapes::triangle::Vertex;
+use crate::assets::model::Vertex; // FIXED IMPORT TO NEW DYNAMIC MODELS
 
 pub struct VertexSetup;
 

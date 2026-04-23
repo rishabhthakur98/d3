@@ -2,14 +2,13 @@
 
 use anyhow::{anyhow, Result};
 use super::renderer::{MasterRenderer, DrawCall};
-use crate::geometrical_shapes::game_object::GameObject;
+use crate::assets::model::Model; // FIXED IMPORT TO NEW GLTF STREAMER
 use crate::light::global::GlobalLight;
 use crate::light::spot::SpotLight;
 use crate::light::point::PointLight;
 use crate::light::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData};
 use crate::volumetrics::fog_config::FogConfig;
 
-/// A segregated struct strictly to hold calculated frame metrics
 pub(crate) struct FrameData {
     pub draw_calls: Vec<DrawCall>,
     pub light_space_matrix: glam::Mat4,
@@ -19,7 +18,6 @@ pub(crate) struct FrameData {
 }
 
 impl MasterRenderer {
-    /// Consolidates all math, geometry extraction, and GPU buffer uploads.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare_data(
         &mut self,
@@ -30,7 +28,7 @@ impl MasterRenderer {
         global_lights: &[GlobalLight],
         spot_lights: &[SpotLight],
         point_lights: &[PointLight],
-        visible_objects: &[GameObject],
+        visible_objects: &[Model], // FIXED TYPE
         fog_config: &FogConfig,
     ) -> Result<FrameData> {
         let mut all_vertices = Vec::new();
@@ -43,7 +41,6 @@ impl MasterRenderer {
         let mut primary_sun_intensity = 0.0;
 
         if is_playing {
-            // Rebuild the master lighting struct for this specific frame
             let mut ubo = LightUBO {
                 ambient_color: glam::Vec4::new(ambient_color[0], ambient_color[1], ambient_color[2], ambient_intensity),
                 camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 0.0),
@@ -62,7 +59,6 @@ impl MasterRenderer {
 
             let mut shadow_caster_dir = None;
 
-            // Load suns and moons
             for gl in global_lights {
                 if ubo.global_count < 4 {
                     let idx = ubo.global_count as usize;
@@ -81,7 +77,6 @@ impl MasterRenderer {
                 }
             }
 
-            // Calculate the directional lighting shadow projection logic
             if let Some(sun_dir) = shadow_caster_dir {
                 let target = glam::Vec3::new(camera_pos.x, 0.0, camera_pos.z);
                 let light_pos = target - (sun_dir * 100.0); 
@@ -89,22 +84,25 @@ impl MasterRenderer {
                 let view_matrix = glam::Mat4::look_at_rh(light_pos, target, up);
                 let ortho_size = 50.0;
                 let mut proj_matrix = glam::Mat4::orthographic_rh(-ortho_size, ortho_size, -ortho_size, ortho_size, 0.1, 300.0);
-                proj_matrix.y_axis.y *= -1.0; // Vulkan Y-flip correction
+                proj_matrix.y_axis.y *= -1.0; 
                 light_space_matrix = proj_matrix * view_matrix;
             }
 
-            // Unify geometry into unified buffers to dramatically reduce draw overhead
-            for obj in visible_objects {
-                let vertex_offset = all_vertices.len() as i32;
-                let index_start = all_indices.len() as u32;
-                let index_count = obj.mesh.indices.len() as u32;
+            // Extract multi-sub-mesh data structures accurately
+            for model in visible_objects {
+                let transform_matrix = model.transform.get_model_matrix();
+                
+                for mesh in &model.meshes {
+                    let vertex_offset = all_vertices.len() as i32;
+                    let index_start = all_indices.len() as u32;
+                    let index_count = mesh.indices.len() as u32;
 
-                all_vertices.extend_from_slice(&obj.mesh.vertices);
-                all_indices.extend_from_slice(&obj.mesh.indices);
-                draw_calls.push(DrawCall { index_start, index_count, vertex_offset, transform: obj.transform.get_model_matrix() });
+                    all_vertices.extend_from_slice(&mesh.vertices);
+                    all_indices.extend_from_slice(&mesh.indices);
+                    draw_calls.push(DrawCall { index_start, index_count, vertex_offset, transform: transform_matrix });
+                }
             }
 
-            // Extract localized spotlights (flashlights, lamps)
             for spot in spot_lights {
                 if ubo.spot_count < 10 {
                     let idx = ubo.spot_count as usize;
@@ -118,7 +116,6 @@ impl MasterRenderer {
                 }
             }
 
-            // Extract localized spherical points (torches, fireflies)
             for point in point_lights {
                 if ubo.point_count < 10 {
                     let idx = ubo.point_count as usize;
@@ -130,7 +127,6 @@ impl MasterRenderer {
                 }
             }
 
-            // Synchronously beam data to the GPU immediately
             let allocator = match self.context.allocator.as_ref() {
                 Some(alloc) => alloc,
                 None => return Err(anyhow!("Memory allocator missing during data prep")),
@@ -141,12 +137,6 @@ impl MasterRenderer {
             self.uniform_buffer.upload_data(allocator, &[ubo])?;
         }
 
-        Ok(FrameData {
-            draw_calls,
-            light_space_matrix,
-            primary_sun_dir,
-            primary_sun_color,
-            primary_sun_intensity,
-        })
+        Ok(FrameData { draw_calls, light_space_matrix, primary_sun_dir, primary_sun_color, primary_sun_intensity })
     }
 }

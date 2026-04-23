@@ -1,12 +1,10 @@
-use crate::geometrical_shapes::mesh::Mesh;
-use crate::geometrical_shapes::triangle::Vertex;
+// src/water/river_mesh.rs
+
+use crate::assets::model::{Mesh, Vertex};
 
 pub struct RiverMesh;
 
 impl RiverMesh {
-    /// Generates a long strip representing a river.
-    /// UV.x = 0.0 to 1.0 (Left bank to Right bank) -> Used for shoreline fading.
-    /// UV.y = 0.0 to Length (Along the river) -> Used for flow scrolling.
     pub fn generate(length: f32, width: f32, res_l: u32, res_w: u32, color: [f32; 4]) -> Mesh {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
@@ -18,15 +16,19 @@ impl RiverMesh {
         for z in 0..=res_l {
             for x in 0..=res_w {
                 let px = -half_w + (x as f32) * step_w;
-                let pz = (z as f32) * step_l; // River flows down +Z
+                let pz = (z as f32) * step_l; 
                 
-                // U is 0.0 to 1.0 across the width. V stretches along the length.
                 let uv = [
                     (x as f32) / (res_w as f32),
-                    (z as f32) / 5.0 // Tile the texture/waves every 5 units
+                    (z as f32) / 5.0 
                 ];
 
-                vertices.push(Vertex::new([px, 0.0, pz], color).with_uv(uv));
+                vertices.push(Vertex {
+                    position: [px, 0.0, pz], 
+                    color, 
+                    normal: [0.0, 1.0, 0.0],
+                    uv
+                });
             }
         }
 

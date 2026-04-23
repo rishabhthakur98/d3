@@ -3,11 +3,11 @@
 use anyhow::{anyhow, Result};
 use ash::{khr::swapchain, vk};
 use winit::window::Window;
-use vk_mem::{Allocation, Alloc};
+
+// FIXED: Removed the unused `vk_mem::Allocation` warning
+use vk_mem::Allocation; 
 
 use crate::vulkan_logic::core::context::VulkanContext;
-
-// Import our newly decoupled modules
 use super::depth::create_depth_buffer;
 use super::render_pass::create_render_pass;
 use super::framebuffers::create_framebuffers;
@@ -75,7 +75,6 @@ impl SwapchainManager {
             unsafe { context.device.create_image_view(&view_info, None) }
         }).collect::<Result<Vec<_>, _>>().map_err(|e| anyhow!("{}", e))?;
 
-        // Leverage the newly decoupled methods
         let depth_format = vk::Format::D32_SFLOAT;
         let (depth_image, depth_allocation, depth_image_view) = create_depth_buffer(context, allocator, extent, depth_format)?;
         let render_pass = create_render_pass(context, format.format, depth_format)?;
@@ -98,7 +97,6 @@ impl SwapchainManager {
         unsafe {
             context.device.device_wait_idle().map_err(|e| anyhow!("{}", e))?;
 
-            // Cleanup old resources
             for &fb in &self.framebuffers { context.device.destroy_framebuffer(fb, None); }
             for &view in &self.image_views { context.device.destroy_image_view(view, None); }
             context.device.destroy_image_view(self.depth_image_view, None);
@@ -140,7 +138,6 @@ impl SwapchainManager {
                 context.device.create_image_view(&view_info, None)
             }).collect::<Result<Vec<_>, _>>().map_err(|e| anyhow!("{}", e))?;
 
-            // Leverage the newly decoupled methods again, preventing huge code duplication
             let depth_format = vk::Format::D32_SFLOAT;
             let (depth_image, depth_allocation, depth_image_view) = create_depth_buffer(context, allocator, extent, depth_format)?;
             

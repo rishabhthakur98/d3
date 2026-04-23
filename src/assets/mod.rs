@@ -1,5 +1,2 @@
-// src/assets/mod.rs
-
-pub mod buildings;
-pub mod grounds;
-pub mod streetlights;
+pub mod model;
+pub mod gltf_loader;

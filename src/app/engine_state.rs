@@ -5,7 +5,7 @@ use winit::window::Window;
 
 use crate::game::menu::MenuSystem;
 use crate::game::world01::controls::InputState;
-use crate::game::world01::segmantload_wrt_camera::WorldStreamer;
+use crate::game::world01::world_streamer::WorldStreamer;
 use crate::game::world01::camera::FreeformCamera;
 use crate::light::global::GlobalLight;
 
@@ -15,7 +15,7 @@ use crate::water::config::RiverConfig;
 use crate::volumetrics::fog_config::FogConfig; 
 use crate::smoke::emitter::SmokeEmitter; 
 use crate::fire::emitter::FireEmitter;
-use crate::weather::emitter::WeatherEmitter; // NEW
+use crate::weather::emitter::WeatherEmitter; 
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::renderers::master::MasterRenderer;
@@ -45,7 +45,7 @@ pub struct EngineApp {
     
     pub smoke_emitter: SmokeEmitter, 
     pub fire_emitter: FireEmitter, 
-    pub weather_emitter: WeatherEmitter, // NEW
+    pub weather_emitter: WeatherEmitter, 
     
     pub engine_start_time: Instant, 
     pub last_update_time: Instant, 
@@ -66,7 +66,7 @@ impl Default for EngineApp {
             fog_config: FogConfig::default(), 
             smoke_emitter: SmokeEmitter::default(), 
             fire_emitter: FireEmitter::default(), 
-            weather_emitter: WeatherEmitter::default(), // NEW
+            weather_emitter: WeatherEmitter::default(), 
             engine_start_time: Instant::now(), last_update_time: Instant::now(), last_frame_time: Instant::now(),
         }
     }

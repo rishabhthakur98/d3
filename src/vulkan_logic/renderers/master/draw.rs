@@ -4,7 +4,7 @@ use anyhow::Result;
 use winit::window::Window;
 use super::renderer::MasterRenderer;
 
-use crate::geometrical_shapes::game_object::GameObject;
+use crate::assets::model::Model; // FIXED IMPORT TO NEW MODEL TYPE
 use crate::light::global::GlobalLight;
 use crate::light::spot::SpotLight; 
 use crate::light::point::PointLight;
@@ -18,8 +18,6 @@ use crate::weather::emitter::WeatherEmitter;
 use crate::volumetrics::fog_config::FogConfig;
 
 impl MasterRenderer {
-    /// High-level orchestration of the frame.
-    /// Notice how beautifully short and readable this is now that logic is segregated!
     #[allow(clippy::too_many_arguments)]
     pub fn draw_frame(
         &mut self, 
@@ -35,7 +33,7 @@ impl MasterRenderer {
         global_lights: &[GlobalLight],
         spot_lights: &[SpotLight],         
         point_lights: &[PointLight],       
-        visible_objects: &[GameObject], 
+        visible_objects: &[Model], // FIXED TYPE 
         skybox_config: &SkyboxConfig,
         cloud_config: &CloudConfig, 
         river_config: &RiverConfig, 
@@ -46,10 +44,8 @@ impl MasterRenderer {
         time: f32,                  
     ) -> Result<()> {
         
-        // 1. Ensure GPU has finished the previous workload
         self.wait_fences()?;
 
-        // 2. Collate, compute, and upload all dynamic memory buffers (Vertices, Indices, Lighting UBOs)
         let frame_data = self.prepare_data(
             is_playing,
             camera_pos,
@@ -62,25 +58,20 @@ impl MasterRenderer {
             fog_config,
         )?;
 
-        // 3. Process new UI textures immediately before recording commands
         self.update_egui_textures(textures_delta)?;
 
-        // 4. Secure our canvas to draw on. If we miss (e.g. window resize), exit early cleanly.
         let img_idx_opt = self.acquire_image(window)?;
         let img_idx = match img_idx_opt {
             Some(idx) => idx,
             None => return Ok(()),
         };
 
-        // 5. Open the command buffer for recording
         self.begin_command_buffer()?;
 
-        // 6. Draw the Shadow Map Pass (Depth-Only Rendering)
         if is_playing && !frame_data.draw_calls.is_empty() {
             self.record_shadow_pass(&frame_data)?;
         }
 
-        // 7. Draw the complete Forward Main Pass (Geometry, Lighting, UI)
         self.record_main_pass(
             img_idx,
             is_playing,
@@ -98,7 +89,6 @@ impl MasterRenderer {
             time,
         )?;
 
-        // 8. Seal the command buffer and dispatch it to the GPU queues
         self.end_command_buffer()?;
         self.submit_and_present(img_idx, window)?;
 

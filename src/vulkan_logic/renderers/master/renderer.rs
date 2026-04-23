@@ -8,7 +8,6 @@ use winit::window::Window;
 use std::sync::Arc;
 
 use crate::vulkan_logic::core::context::VulkanContext;
-// FIXED: This now properly targets the decoupled folder!
 use crate::vulkan_logic::core::swapchain::SwapchainManager; 
 use crate::vulkan_logic::core::sync_objects::SyncObjects;
 use crate::vulkan_logic::pipelines::main_pipeline::MainPipeline;
@@ -25,7 +24,7 @@ use crate::vulkan_logic::renderers::fire_renderer::FireSystem;
 use crate::vulkan_logic::renderers::weather_renderer::WeatherSystem;
 use crate::water::config::RiverConfig;
 
-/// Holds the offset logic for instanced rendering and binding of geometries
+#[derive(Clone, Debug)]
 pub(crate) struct DrawCall {
     pub index_start: u32,
     pub index_count: u32,
@@ -57,7 +56,6 @@ pub struct MasterRenderer {
 }
 
 impl MasterRenderer {
-    /// Initializes all sub-renderers and Vulkan primitives
     pub fn new(context: Arc<VulkanContext>, window: &Window) -> Result<Self> {
         let swapchain_mgr = SwapchainManager::new(&context, window)?;
         let sync = SyncObjects::new(&context)?;
@@ -85,7 +83,8 @@ impl MasterRenderer {
             None => return Err(anyhow!("Vulkan memory allocator was not initialized")),
         };
 
-        let vertex_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<crate::geometrical_shapes::triangle::Vertex>() * 10000, vk::BufferUsageFlags::VERTEX_BUFFER)?;
+        // FIXED: Uses the new geometry Vertex struct format
+        let vertex_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<crate::assets::model::Vertex>() * 10000, vk::BufferUsageFlags::VERTEX_BUFFER)?;
         let index_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<u32>() * 10000, vk::BufferUsageFlags::INDEX_BUFFER)?;
 
         let pool_sizes = [

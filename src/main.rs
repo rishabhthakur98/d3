@@ -8,7 +8,6 @@ mod clouds;
 mod fire;
 mod weather;
 mod assets;
-mod geometrical_shapes;
 mod backface_cull_config;
 mod game;
 mod light;
