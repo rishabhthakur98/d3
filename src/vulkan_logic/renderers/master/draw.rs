@@ -37,11 +37,11 @@ impl MasterRenderer {
         visible_objects: &[Model],  
         skybox_config: &SkyboxConfig,
         cloud_config: &CloudConfig, 
-        river_configs: &[RiverConfig], // Updated Array routing
+        river_configs: &[RiverConfig], 
         fog_config: &FogConfig,
-        smoke_emitters: &[SmokeEmitter], // Updated Array routing
-        fire_emitters: &[FireEmitter], // Updated Array routing
-        weather_emitter: &WeatherEmitter,
+        smoke_emitters: &[SmokeEmitter], 
+        fire_emitters: &[FireEmitter], 
+        weather_emitters: &[WeatherEmitter], // Added to rendering signature
         time: f32,                  
     ) -> Result<()> {
         
@@ -84,7 +84,7 @@ impl MasterRenderer {
             river_configs,
             smoke_emitters,
             fire_emitters,
-            weather_emitter,
+            weather_emitters,
             clipped_primitives,
             pixels_per_point,
             time,

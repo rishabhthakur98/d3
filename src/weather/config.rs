@@ -39,9 +39,9 @@ impl WeatherConfig {
             weather_type: WeatherType::Rain,
             particle_count: 3000,
             box_size: Vec3::new(30.0, 40.0, 30.0),
-            fall_speed: 25.0, // Falls very fast
+            fall_speed: 25.0, 
             wind_velocity: Vec3::new(5.0, 0.0, 2.0),
-            particle_scale: 0.15, // Thin drops
+            particle_scale: 0.15, 
             color: [0.8, 0.85, 0.9, 0.6],
         }
     }
@@ -51,9 +51,9 @@ impl WeatherConfig {
             weather_type: WeatherType::Snow,
             particle_count: 1500,
             box_size: Vec3::new(30.0, 30.0, 30.0),
-            fall_speed: 2.0, // Falls very slowly
+            fall_speed: 2.0, 
             wind_velocity: Vec3::new(1.0, 0.0, 0.5),
-            particle_scale: 0.25, // Large fluffy flakes
+            particle_scale: 0.25, 
             color: [1.0, 1.0, 1.0, 0.8],
         }
     }

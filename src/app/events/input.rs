@@ -71,8 +71,6 @@ impl EngineApp {
                         self.global_lights = game::world01::global_light_config::get_global_lights();
                         self.skybox_config = game::world01::skybox_config::get_skybox_config();
                         
-                        self.weather_emitter.set_weather(crate::weather::config::WeatherConfig::heavy_rain());
-
                         if let Some(w) = &self.window { 
                             let _ = w.set_cursor_grab(CursorGrabMode::Confined)
                                      .or_else(|_| w.set_cursor_grab(CursorGrabMode::Locked)); 

@@ -87,31 +87,40 @@ impl WeatherSystem {
         Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
     }
 
-    pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, emitter: &WeatherEmitter, view_proj: glam::Mat4, camera_view: glam::Mat4, camera_pos: glam::Vec3, time: f32) -> Result<()> {
+    pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, emitters: &[WeatherEmitter], view_proj: glam::Mat4, camera_view: glam::Mat4, camera_pos: glam::Vec3, time: f32) -> Result<()> {
         let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
-        if emitter.config.weather_type == WeatherType::None || emitter.particles.is_empty() { return Ok(()); }
+        if emitters.is_empty() { return Ok(()); }
 
         let inv_view = camera_view.inverse();
-        let is_rain = if emitter.config.weather_type == WeatherType::Rain { 1.0 } else { 0.0 };
 
         let mut ubo = WeatherUBO {
             view_proj,
             camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 1.0),
             camera_right: inv_view.x_axis,
             camera_up: inv_view.y_axis,
-            color: glam::Vec4::new(emitter.config.color[0], emitter.config.color[1], emitter.config.color[2], emitter.config.color[3]),
-            params: glam::Vec4::new(emitter.config.particle_scale, emitter.config.fall_speed, is_rain, time),
-            wind: glam::Vec4::new(emitter.config.wind_velocity.x, emitter.config.wind_velocity.y, emitter.config.wind_velocity.z, 0.0),
-            particle_count: emitter.particles.len() as u32,
+            particle_count: 0,
             _pad: [0; 3],
             particles: [WeatherParticleData::default(); 3000],
         };
 
-        for (i, p) in emitter.particles.iter().enumerate().take(3000) {
-            ubo.particles[i] = WeatherParticleData {
-                position: glam::Vec4::new(p.local_pos.x, p.local_pos.y, p.local_pos.z, p.random_seed),
-            };
+        // AAA Batch merging! Combines 3000 dynamic rain/snow elements into a single massive GPU draw command
+        for emitter in emitters {
+            if emitter.config.weather_type == WeatherType::None { continue; }
+            let is_rain = if emitter.config.weather_type == WeatherType::Rain { 1.0 } else { 0.0 };
+            
+            for p in &emitter.particles {
+                if ubo.particle_count < 3000 {
+                    ubo.particles[ubo.particle_count as usize] = WeatherParticleData {
+                        position: glam::Vec4::new(p.local_pos.x, p.local_pos.y, p.local_pos.z, p.random_seed),
+                        color: glam::Vec4::from_array(emitter.config.color),
+                        params: glam::Vec4::new(emitter.config.particle_scale, emitter.config.fall_speed, is_rain, time),
+                    };
+                    ubo.particle_count += 1;
+                }
+            }
         }
+
+        if ubo.particle_count == 0 { return Ok(()); }
 
         self.ubo_buffer.upload_data(allocator, &[ubo])?;
 

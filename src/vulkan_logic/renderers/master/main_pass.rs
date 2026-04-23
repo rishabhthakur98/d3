@@ -28,7 +28,7 @@ impl MasterRenderer {
         river_configs: &[RiverConfig],
         smoke_emitters: &[SmokeEmitter],
         fire_emitters: &[FireEmitter],
-        weather_emitter: &WeatherEmitter,
+        weather_emitters: &[WeatherEmitter],
         clipped_primitives: &[egui::ClippedPrimitive],
         pixels_per_point: f32,
         time: f32,
@@ -127,7 +127,7 @@ impl MasterRenderer {
                 self.weather_system.draw(
                     &self.context,
                     self.sync.command_buffer,
-                    weather_emitter,
+                    weather_emitters, // Pushed directly into draw layer
                     view_proj,
                     camera_view_matrix,
                     camera_pos,
@@ -136,7 +136,6 @@ impl MasterRenderer {
             }
 
             if !clipped_primitives.is_empty() {
-                // Return mapped error string instead of unwrapping 
                 self.egui_renderer.cmd_draw(self.sync.command_buffer, self.swapchain_mgr.extent, pixels_per_point, clipped_primitives)
                     .map_err(|e| anyhow::anyhow!("Egui draw error: {}", e))?;
             }

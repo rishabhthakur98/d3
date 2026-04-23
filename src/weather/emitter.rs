@@ -8,6 +8,8 @@ pub struct WeatherParticle {
     pub random_seed: f32, // Used for flutter math in the shader
 }
 
+// FIXED: Added Clone and Debug derives so the parent struct can be cloned
+#[derive(Clone, Debug)]
 struct Lcg { state: u32 }
 impl Lcg {
     fn new(seed: u32) -> Self { Self { state: seed } }
@@ -17,7 +19,8 @@ impl Lcg {
     }
 }
 
-/// The CPU simulation that perfectly loops particles around the camera
+/// FIXED: Added Clone so WorldStreamer can hand off arrays safely to the Renderer
+#[derive(Clone)]
 pub struct WeatherEmitter {
     pub config: WeatherConfig,
     pub particles: Vec<WeatherParticle>,
