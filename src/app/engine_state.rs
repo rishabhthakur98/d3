@@ -1,6 +1,4 @@
 // src/app/engine_state.rs
-// Completely removed global `cloud_config`
-
 use std::sync::Arc;
 use std::time::Instant;
 use winit::window::Window;
@@ -11,6 +9,7 @@ use crate::game::world01::world_streamer::WorldStreamer;
 use crate::game::world01::camera::FreeformCamera;
 use crate::lights::global::directional::GlobalLight;
 use crate::skybox::config::SkyboxConfig;
+use crate::postprocessing::config::PostProcessConfig;
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::renderers::master::MasterRenderer;
 
@@ -31,9 +30,10 @@ pub struct EngineApp {
     pub ambient_color: [f32; 3],
     pub ambient_intensity: f32,
     pub global_lights: Vec<GlobalLight>,
-    
     pub skybox_config: SkyboxConfig,
     
+    pub post_process_config: PostProcessConfig,
+
     pub engine_start_time: Instant, 
     pub last_update_time: Instant, 
     pub last_frame_time: Instant,  
@@ -48,6 +48,7 @@ impl Default for EngineApp {
             world_streamer: WorldStreamer::new(), camera: FreeformCamera::default(),
             ambient_color: [0.0, 0.0, 0.0], ambient_intensity: 0.0, global_lights: Vec::new(),
             skybox_config: SkyboxConfig::default(), 
+            post_process_config: PostProcessConfig::default(),
             engine_start_time: Instant::now(), last_update_time: Instant::now(), last_frame_time: Instant::now(),
         }
     }

@@ -1,6 +1,4 @@
 // src/main.rs
-
-// FIXED: `light` module renamed to `lights` globally
 mod app;
 mod volumetrics;
 mod water; 
@@ -15,6 +13,7 @@ mod game;
 mod lights; 
 mod vulkan_logic;
 mod frame_config; 
+mod postprocessing;
 
 use winit::event_loop::{ControlFlow, EventLoop};
 use anyhow::Result;

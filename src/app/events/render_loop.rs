@@ -9,12 +9,10 @@ impl EngineApp {
         let now = Instant::now();
         let delta_time = (now - self.last_update_time).as_secs_f32();
         self.last_update_time = now; 
-        
         let current_time = self.engine_start_time.elapsed().as_secs_f32(); 
         
         if let (Some(renderer), Some(window), Some(state)) = (&mut self.renderer, &self.window, &mut self.egui_state) {
             
-            // 1. Cull the local streamer and dump dynamic array values securely
             let (visible_objects, active_spots, active_points, active_rivers, active_smokes, active_fires, active_weathers, active_fogs, active_clouds) = if self.is_playing {
                 game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
                 self.world_streamer.tick(delta_time); 
@@ -34,7 +32,6 @@ impl EngineApp {
                             ui.add_space(150.0); 
                             ui.heading(egui::RichText::new("D3 ENGINE").size(80.0).color(egui::Color32::WHITE)); 
                             ui.add_space(80.0);
-                            
                             for (i, opt) in options.iter().enumerate() {
                                 let text = if i == cursor { format!("-> [ {} ] <-", opt) } else { opt.to_string() };
                                 let color = if i == cursor { egui::Color32::YELLOW } else { egui::Color32::GRAY };
@@ -66,12 +63,13 @@ impl EngineApp {
                 &active_points, 
                 &visible_objects,
                 &self.skybox_config, 
-                &active_clouds, // MAPPED NEW LOCAL CLOUDS
+                &active_clouds, 
                 &active_rivers,
                 &active_fogs,
                 &active_smokes, 
                 &active_fires,
                 &active_weathers, 
+                &self.post_process_config,
                 current_time, 
             ) { 
                 tracing::error!("Draw error: {}", e); 

@@ -1,5 +1,4 @@
 // src/vulkan_logic/renderers/master/draw.rs
-
 use anyhow::Result;
 use winit::window::Window;
 use super::renderer::MasterRenderer;
@@ -11,12 +10,13 @@ use crate::lights::spawnable::spot::SpotLight;
 use crate::lights::spawnable::point::PointLight;
 
 use crate::skybox::config::SkyboxConfig;
-use crate::clouds::config::CloudVolume; // NEW 
+use crate::clouds::config::CloudVolume; 
 use crate::water::config::RiverConfig;
 use crate::smoke::emitter::SmokeEmitter;
 use crate::fire::emitter::FireEmitter;
 use crate::weather::emitter::WeatherEmitter;
 use crate::volumetrics::fog_config::FogVolume;
+use crate::postprocessing::config::PostProcessConfig;
 
 impl MasterRenderer {
     #[allow(clippy::too_many_arguments)]
@@ -36,27 +36,20 @@ impl MasterRenderer {
         point_lights: &[PointLight],       
         visible_objects: &[Model],  
         skybox_config: &SkyboxConfig,
-        cloud_volumes: &[CloudVolume],     // NEW
+        cloud_volumes: &[CloudVolume], 
         river_configs: &[RiverConfig], 
         fog_volumes: &[FogVolume], 
         smoke_emitters: &[SmokeEmitter], 
         fire_emitters: &[FireEmitter], 
         weather_emitters: &[WeatherEmitter], 
+        post_process_config: &PostProcessConfig,
         time: f32,                  
     ) -> Result<()> {
         
         self.wait_fences()?;
 
         let frame_data = self.prepare_data(
-            is_playing,
-            camera_pos,
-            ambient_color,
-            ambient_intensity,
-            global_lights,
-            spot_lights,
-            point_lights,
-            visible_objects,
-            fog_volumes,
+            is_playing, camera_pos, ambient_color, ambient_intensity, global_lights, spot_lights, point_lights, visible_objects, fog_volumes,
         )?;
 
         self.update_egui_textures(textures_delta)?;
@@ -74,20 +67,7 @@ impl MasterRenderer {
         }
 
         self.record_main_pass(
-            img_idx,
-            is_playing,
-            camera_pos,
-            camera_view_matrix,
-            &frame_data,
-            skybox_config,
-            cloud_volumes,
-            river_configs,
-            smoke_emitters,
-            fire_emitters,
-            weather_emitters,
-            clipped_primitives,
-            pixels_per_point,
-            time,
+            img_idx, is_playing, camera_pos, camera_view_matrix, &frame_data, skybox_config, cloud_volumes, river_configs, smoke_emitters, fire_emitters, weather_emitters, post_process_config, clipped_primitives, pixels_per_point, time,
         )?;
 
         self.end_command_buffer()?;
