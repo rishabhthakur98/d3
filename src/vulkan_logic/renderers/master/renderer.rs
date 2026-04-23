@@ -8,7 +8,8 @@ use winit::window::Window;
 use std::sync::Arc;
 
 use crate::vulkan_logic::core::context::VulkanContext;
-use crate::vulkan_logic::core::swapchain_manager::SwapchainManager;
+// FIXED: This now properly targets the decoupled folder!
+use crate::vulkan_logic::core::swapchain::SwapchainManager; 
 use crate::vulkan_logic::core::sync_objects::SyncObjects;
 use crate::vulkan_logic::pipelines::main_pipeline::MainPipeline;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
@@ -32,9 +33,6 @@ pub(crate) struct DrawCall {
     pub transform: glam::Mat4,
 }
 
-/// The core orchestration structure. 
-/// We have decoupled all the heavy lifting into separate modules (`draw.rs`, `shadow_pass.rs`, etc.)
-/// so this struct is now clean and easy to read.
 pub struct MasterRenderer {
     pub is_resized: bool,
     pub egui_renderer: EguiRenderer,
@@ -69,11 +67,9 @@ impl MasterRenderer {
             EguiOptions { srgb_framebuffer: false, ..Default::default() },
         ).map_err(|e| anyhow!("Failed to initialize egui: {}", e))?;
 
-        // Initialize our passes and pipelines safely
         let shadow_pass = ShadowPass::new(&context)?;
         let pipeline = MainPipeline::new(&context, swapchain_mgr.render_pass, shadow_pass.render_pass)?;
         
-        // Initialize independent sub-systems
         let skybox_system = SkyboxSystem::new(&context, swapchain_mgr.render_pass)?;
         let cloud_system = CloudSystem::new(&context, swapchain_mgr.render_pass)?; 
         
@@ -89,7 +85,6 @@ impl MasterRenderer {
             None => return Err(anyhow!("Vulkan memory allocator was not initialized")),
         };
 
-        // Create large unified buffers to prevent memory fragmentation
         let vertex_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<crate::geometrical_shapes::triangle::Vertex>() * 10000, vk::BufferUsageFlags::VERTEX_BUFFER)?;
         let index_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<u32>() * 10000, vk::BufferUsageFlags::INDEX_BUFFER)?;
 
@@ -109,7 +104,6 @@ impl MasterRenderer {
         let uniform_buffer_info = vk::DescriptorBufferInfo::default().buffer(uniform_buffer.buffer).offset(0).range(std::mem::size_of::<LightUBO>() as u64);
         let shadow_image_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL).image_view(shadow_pass.depth_view).sampler(shadow_pass.sampler);
 
-        // Bind our UBOs and shadow maps
         let write_sets = [
             vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&uniform_buffer_info)),
             vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(1).dst_array_element(0).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&shadow_image_info)),
