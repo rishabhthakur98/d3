@@ -1,4 +1,6 @@
 // src/main.rs
+
+// FIXED: `light` module renamed to `lights` globally
 mod app;
 mod volumetrics;
 mod water; 
@@ -10,7 +12,7 @@ mod weather;
 mod assets;
 mod backface_cull_config;
 mod game;
-mod light;
+mod lights; 
 mod vulkan_logic;
 mod frame_config; 
 

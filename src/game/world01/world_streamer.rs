@@ -1,11 +1,11 @@
 // src/game/world01/world_streamer.rs
+// Updated to support dynamically spawning 100s of highly customizable lights
 
 use glam::Vec3;
 use crate::assets::model::Model;
 use crate::assets::gltf_loader::load_gltf_asset;
-use crate::light::{spot::SpotLight, point::PointLight};
+use crate::lights::spawnable::{spot::SpotLight, point::PointLight};
 
-/// Configuration representing a specific 3D mesh that lives on the hard drive
 #[derive(Clone, Debug)]
 pub struct AssetDefinition {
     pub file_path: String,
@@ -20,14 +20,12 @@ impl AssetDefinition {
     }
 }
 
-/// A spatial boundary. If the camera crosses inside, the disk is hit to load assets to RAM.
-/// If the camera leaves, the models are purged from RAM immediately.
 pub struct VirtualCuboid {
     pub min_bounds: Vec3,
     pub max_bounds: Vec3,
-    pub assets_to_load: Vec<AssetDefinition>,
     
-    // We can also bind highly-localized light sources specifically to this space
+    // Spawnable Arrays
+    pub assets_to_load: Vec<AssetDefinition>,
     pub spot_lights: Vec<SpotLight>,
     pub point_lights: Vec<PointLight>,
     
@@ -54,16 +52,12 @@ impl VirtualCuboid {
         }
         
         self.is_loaded = true;
-        tracing::info!("VirtualCuboid entered. Assets loaded to RAM.");
     }
 
     pub fn unload_from_ram(&mut self) {
         if !self.is_loaded { return; }
-        
-        // Let Rust's borrow checker automatically wipe the memory
         self.loaded_models.clear();
         self.is_loaded = false;
-        tracing::info!("VirtualCuboid exited. Assets purged from RAM.");
     }
 }
 
@@ -77,15 +71,37 @@ impl Default for WorldStreamer {
 
 impl WorldStreamer {
     pub fn new() -> Self {
-        // --- Configure Level Boundaries ---
         let zone_01 = VirtualCuboid {
             min_bounds: Vec3::new(-200.0, -100.0, -200.0),
             max_bounds: Vec3::new(200.0, 100.0, 200.0),
+            
             assets_to_load: vec![
                 AssetDefinition::new("assets/models/terrain.glb", Vec3::ZERO, Vec3::ZERO, Vec3::ONE),
             ],
-            spot_lights: Vec::new(),
-            point_lights: Vec::new(),
+            
+            // Highly customized, builder-pattern localized lights!
+            spot_lights: vec![
+                SpotLight::new(
+                    Vec3::new(8.0, 9.0, 5.0),    // Position
+                    Vec3::new(0.0, -1.0, 0.0),   // Pointing straight down
+                    [1.0, 0.9, 0.5],             // Warm yellowish color
+                    20.0,                        // Intensity
+                    200.0,                       // Distance range
+                    15.0,                        // Core inner cone
+                    30.0,                        // Fading outer cone
+                    true                         // Generate shadow map?
+                ),
+            ],
+            
+            point_lights: vec![
+                PointLight::new(
+                    Vec3::new(0.0, 1.0, 3.0),    // Position
+                    [1.0, 0.0, 0.0],             // Pure Red
+                    5.0,                         // Intensity
+                    15.0                         // Distance range
+                ),
+            ],
+            
             is_loaded: false,
             loaded_models: Vec::new(),
         };
@@ -93,7 +109,6 @@ impl WorldStreamer {
         Self { zones: vec![zone_01] }
     }
 
-    /// Evaluates the physical coordinates of the player and streams data dynamically
     pub fn get_visible_objects(&mut self, camera_pos: Vec3) -> (Vec<Model>, Vec<SpotLight>, Vec<PointLight>) {
         let mut active_models = Vec::new();
         let mut active_spots = Vec::new();

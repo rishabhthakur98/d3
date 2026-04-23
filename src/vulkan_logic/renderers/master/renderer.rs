@@ -14,7 +14,8 @@ use crate::vulkan_logic::pipelines::main_pipeline::MainPipeline;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
 use crate::vulkan_logic::passes::shadow_pass::ShadowPass;
 
-use crate::light::ubo::LightUBO;
+// FIXED: UBO dependency mapped from the new Core lighting architecture
+use crate::lights::core::ubo::LightUBO;
 
 use crate::vulkan_logic::renderers::skybox_renderer::SkyboxSystem;
 use crate::vulkan_logic::renderers::river_renderer::RiverSystem;
@@ -83,7 +84,6 @@ impl MasterRenderer {
             None => return Err(anyhow!("Vulkan memory allocator was not initialized")),
         };
 
-        // FIXED: Uses the new geometry Vertex struct format
         let vertex_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<crate::assets::model::Vertex>() * 10000, vk::BufferUsageFlags::VERTEX_BUFFER)?;
         let index_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<u32>() * 10000, vk::BufferUsageFlags::INDEX_BUFFER)?;
 

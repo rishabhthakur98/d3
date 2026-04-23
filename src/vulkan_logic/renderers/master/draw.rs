@@ -4,10 +4,12 @@ use anyhow::Result;
 use winit::window::Window;
 use super::renderer::MasterRenderer;
 
-use crate::assets::model::Model; // FIXED IMPORT TO NEW MODEL TYPE
-use crate::light::global::GlobalLight;
-use crate::light::spot::SpotLight; 
-use crate::light::point::PointLight;
+use crate::assets::model::Model; 
+
+// FIXED: Mapped to the new lighting hierarchy
+use crate::lights::global::directional::GlobalLight;
+use crate::lights::spawnable::spot::SpotLight; 
+use crate::lights::spawnable::point::PointLight;
 
 use crate::skybox::config::SkyboxConfig;
 use crate::clouds::config::CloudConfig;
@@ -33,7 +35,7 @@ impl MasterRenderer {
         global_lights: &[GlobalLight],
         spot_lights: &[SpotLight],         
         point_lights: &[PointLight],       
-        visible_objects: &[Model], // FIXED TYPE 
+        visible_objects: &[Model],  
         skybox_config: &SkyboxConfig,
         cloud_config: &CloudConfig, 
         river_config: &RiverConfig, 

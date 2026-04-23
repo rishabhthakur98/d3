@@ -1,4 +1,5 @@
 // src/app/engine_state.rs
+
 use std::sync::Arc;
 use std::time::Instant;
 use winit::window::Window;
@@ -7,7 +8,9 @@ use crate::game::menu::MenuSystem;
 use crate::game::world01::controls::InputState;
 use crate::game::world01::world_streamer::WorldStreamer;
 use crate::game::world01::camera::FreeformCamera;
-use crate::light::global::GlobalLight;
+
+// FIXED: Routed to new `lights` module
+use crate::lights::global::directional::GlobalLight;
 
 use crate::skybox::config::SkyboxConfig;
 use crate::clouds::config::CloudConfig;
