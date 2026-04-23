@@ -8,7 +8,7 @@ use super::data_prep::FrameData;
 
 use crate::vulkan_logic::pipelines::main_pipeline::PushConstants;
 use crate::skybox::config::SkyboxConfig;
-use crate::clouds::config::CloudConfig;
+use crate::clouds::config::CloudVolume; // NEW
 use crate::water::config::RiverConfig;
 use crate::smoke::emitter::SmokeEmitter;
 use crate::fire::emitter::FireEmitter;
@@ -24,7 +24,7 @@ impl MasterRenderer {
         camera_view_matrix: glam::Mat4,
         frame_data: &FrameData,
         skybox_config: &SkyboxConfig,
-        cloud_config: &CloudConfig,
+        cloud_volumes: &[CloudVolume], // NEW
         river_configs: &[RiverConfig],
         smoke_emitters: &[SmokeEmitter],
         fire_emitters: &[FireEmitter],
@@ -72,7 +72,7 @@ impl MasterRenderer {
                 self.cloud_system.draw(
                     &self.context,
                     self.sync.command_buffer,
-                    cloud_config,
+                    cloud_volumes, // NEW MAPPED CLOUDS
                     inv_view_proj,
                     camera_pos,
                     frame_data.primary_sun_dir,
@@ -95,7 +95,6 @@ impl MasterRenderer {
                     }
                 }
 
-                // Array driven passes
                 self.river_system.draw(
                     &self.context,
                     self.sync.command_buffer,
@@ -127,7 +126,7 @@ impl MasterRenderer {
                 self.weather_system.draw(
                     &self.context,
                     self.sync.command_buffer,
-                    weather_emitters, // Pushed directly into draw layer
+                    weather_emitters, 
                     view_proj,
                     camera_view_matrix,
                     camera_pos,

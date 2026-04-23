@@ -8,8 +8,8 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
-use crate::clouds::ubo::CloudUBO;
-use crate::clouds::config::CloudConfig;
+use crate::clouds::ubo::{CloudUBO, CloudVolumeData};
+use crate::clouds::config::CloudVolume;
 
 pub struct CloudSystem {
     pub pipeline_layout: vk::PipelineLayout,
@@ -50,13 +50,10 @@ impl CloudSystem {
         let frag_mod = Self::create_module(&context.device, &frag_code)?;
         let entry = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
 
-        // Fullscreen triangle generation without vertex buffers
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
         let assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let viewport = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
-        
-        // Depth test is ON so clouds hide behind tall buildings, Depth write is OFF so clouds don't block each other
         let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::LESS);
         
         let blend_attachment = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
@@ -89,27 +86,43 @@ impl CloudSystem {
         Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
     }
 
-    pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, config: &CloudConfig, inv_view_proj: glam::Mat4, cam_pos: glam::Vec3, sun_dir: glam::Vec3, sun_color: [f32; 3], intensity: f32, time: f32) -> Result<()> {
+    pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, clouds: &[CloudVolume], inv_view_proj: glam::Mat4, cam_pos: glam::Vec3, sun_dir: glam::Vec3, sun_color: [f32; 3], intensity: f32, time: f32) -> Result<()> {
         let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
 
-        let ubo = CloudUBO {
+        if clouds.is_empty() { return Ok(()); }
+
+        let mut ubo = CloudUBO {
             inv_view_proj,
             camera_pos: glam::Vec4::new(cam_pos.x, cam_pos.y, cam_pos.z, 1.0),
             sun_dir: glam::Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, intensity),
             sun_color: glam::Vec4::new(sun_color[0], sun_color[1], sun_color[2], 1.0),
-            base_color: glam::Vec4::new(config.base_color[0], config.base_color[1], config.base_color[2], 1.0),
-            highlight_color: glam::Vec4::new(config.highlight_color[0], config.highlight_color[1], config.highlight_color[2], 1.0),
-            params: glam::Vec4::new(time, config.cloud_coverage, config.cloud_density, config.wind_speed),
-            wind_dir: glam::Vec4::new(config.wind_direction.x, config.wind_direction.y, config.wind_direction.z, 0.0),
-            heights: glam::Vec4::new(config.height_min, config.height_max, 0.0, 0.0),
+            time,
+            cloud_count: 0,
+            _pad: [0; 2],
+            clouds: [CloudVolumeData::default(); 10],
         };
+
+        // AAA Batch loop: Upload multiple dynamic volumes dynamically into a single render call!
+        for cloud in clouds {
+            if ubo.cloud_count < 10 {
+                let idx = ubo.cloud_count as usize;
+                ubo.clouds[idx] = CloudVolumeData {
+                    min_bounds: glam::Vec4::new(cloud.min_bounds.x, cloud.min_bounds.y, cloud.min_bounds.z, cloud.cloud_coverage),
+                    max_bounds: glam::Vec4::new(cloud.max_bounds.x, cloud.max_bounds.y, cloud.max_bounds.z, cloud.cloud_density),
+                    base_color: glam::Vec4::new(cloud.base_color[0], cloud.base_color[1], cloud.base_color[2], cloud.wind_speed),
+                    highlight_color: glam::Vec4::new(cloud.highlight_color[0], cloud.highlight_color[1], cloud.highlight_color[2], 0.0),
+                    wind_dir: glam::Vec4::new(cloud.wind_direction.x, cloud.wind_direction.y, cloud.wind_direction.z, 0.0),
+                };
+                ubo.cloud_count += 1;
+            }
+        }
 
         self.ubo_buffer.upload_data(allocator, &[ubo])?;
 
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             context.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
-            context.device.cmd_draw(cmd, 3, 1, 0, 0); // Draw fullscreen triangle
+            context.device.cmd_draw(cmd, 3, 1, 0, 0); // Draw fullscreen raytracing triangle
         }
         Ok(())
     }

@@ -11,7 +11,7 @@ use crate::lights::spawnable::spot::SpotLight;
 use crate::lights::spawnable::point::PointLight;
 
 use crate::skybox::config::SkyboxConfig;
-use crate::clouds::config::CloudConfig;
+use crate::clouds::config::CloudVolume; // NEW 
 use crate::water::config::RiverConfig;
 use crate::smoke::emitter::SmokeEmitter;
 use crate::fire::emitter::FireEmitter;
@@ -36,9 +36,9 @@ impl MasterRenderer {
         point_lights: &[PointLight],       
         visible_objects: &[Model],  
         skybox_config: &SkyboxConfig,
-        cloud_config: &CloudConfig, 
+        cloud_volumes: &[CloudVolume],     // NEW
         river_configs: &[RiverConfig], 
-        fog_volumes: &[FogVolume], // Mapped
+        fog_volumes: &[FogVolume], 
         smoke_emitters: &[SmokeEmitter], 
         fire_emitters: &[FireEmitter], 
         weather_emitters: &[WeatherEmitter], 
@@ -80,7 +80,7 @@ impl MasterRenderer {
             camera_view_matrix,
             &frame_data,
             skybox_config,
-            cloud_config,
+            cloud_volumes,
             river_configs,
             smoke_emitters,
             fire_emitters,

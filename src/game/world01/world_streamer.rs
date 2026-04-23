@@ -1,5 +1,4 @@
 // src/game/world01/world_streamer.rs
-
 use glam::Vec3;
 use crate::assets::model::Model;
 use crate::assets::gltf_loader::load_gltf_asset;
@@ -12,6 +11,7 @@ use crate::fire::config::FireConfig;
 use crate::weather::emitter::WeatherEmitter;
 use crate::weather::config::WeatherConfig;
 use crate::volumetrics::fog_config::FogVolume;
+use crate::clouds::config::CloudVolume; // NEW
 
 #[derive(Clone, Debug)]
 pub struct AssetDefinition {
@@ -39,9 +39,8 @@ pub struct VirtualCuboid {
     pub smoke_emitters: Vec<SmokeEmitter>,
     pub fire_emitters: Vec<FireEmitter>,
     pub weather_emitters: Vec<WeatherEmitter>, 
-    
-    // NEW: Localized Volumetric Fog Arrays
     pub fog_volumes: Vec<FogVolume>,
+    pub cloud_volumes: Vec<CloudVolume>, // NEW
     
     pub is_loaded: bool,
     pub loaded_models: Vec<Model>,
@@ -87,9 +86,7 @@ impl WorldStreamer {
             min_bounds: Vec3::new(-200.0, -100.0, -200.0),
             max_bounds: Vec3::new(200.0, 100.0, 200.0),
             
-            assets_to_load: vec![
-                AssetDefinition::new("assets/models/terrain.glb", Vec3::ZERO, Vec3::ZERO, Vec3::ONE),
-            ],
+            assets_to_load: vec![AssetDefinition::new("assets/models/terrain.glb", Vec3::ZERO, Vec3::ZERO, Vec3::ONE)],
             spot_lights: vec![SpotLight::new(Vec3::new(8.0, 9.0, 5.0), Vec3::new(0.0, -1.0, 0.0), [1.0, 0.9, 0.5], 20.0, 200.0, 15.0, 30.0, true)],
             point_lights: vec![PointLight::new(Vec3::new(0.0, 1.0, 3.0), [1.0, 0.0, 0.0], 5.0, 15.0)],
             
@@ -98,15 +95,13 @@ impl WorldStreamer {
             fire_emitters: vec![FireEmitter::new(FireConfig { position: Vec3::new(-2.0, -1.0, 3.0), ..Default::default() })],
             weather_emitters: vec![WeatherEmitter::new(WeatherConfig::heavy_rain())],
             
-            // NEW: Configured directly in the zone as a localized box!
-            fog_volumes: vec![
-                FogVolume::new(
-                    Vec3::new(-50.0, -10.0, -50.0), // X Min, Y Min, Z Min
-                    Vec3::new(50.0, 20.0, 50.0),    // X Max, Y Max, Z Max
-                    [0.6, 0.7, 0.8],                // Color
-                    0.025                           // Density Thickness
-                )
-            ],
+            fog_volumes: vec![FogVolume::new(Vec3::new(-50.0, -10.0, -50.0), Vec3::new(50.0, 20.0, 50.0), [0.6, 0.7, 0.8], 0.025)],
+            
+            // NEW: Clouds are now localized! Covers from Y=150 to Y=300 locally!
+            cloud_volumes: vec![CloudVolume::new(
+                Vec3::new(-200.0, 150.0, -200.0), 
+                Vec3::new(200.0, 300.0, 200.0)
+            )],
             
             is_loaded: false,
             loaded_models: Vec::new(),
@@ -126,7 +121,7 @@ impl WorldStreamer {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn get_visible_objects(&mut self, camera_pos: Vec3) -> (Vec<Model>, Vec<SpotLight>, Vec<PointLight>, Vec<RiverConfig>, Vec<SmokeEmitter>, Vec<FireEmitter>, Vec<WeatherEmitter>, Vec<FogVolume>) {
+    pub fn get_visible_objects(&mut self, camera_pos: Vec3) -> (Vec<Model>, Vec<SpotLight>, Vec<PointLight>, Vec<RiverConfig>, Vec<SmokeEmitter>, Vec<FireEmitter>, Vec<WeatherEmitter>, Vec<FogVolume>, Vec<CloudVolume>) {
         let mut models = Vec::new();
         let mut spots = Vec::new();
         let mut points = Vec::new();
@@ -135,6 +130,7 @@ impl WorldStreamer {
         let mut fires = Vec::new();
         let mut weathers = Vec::new();
         let mut fogs = Vec::new();
+        let mut clouds = Vec::new(); // NEW
 
         for zone in &mut self.zones {
             if zone.contains(camera_pos) {
@@ -148,12 +144,13 @@ impl WorldStreamer {
                 fires.extend(zone.fire_emitters.clone());
                 weathers.extend(zone.weather_emitters.clone());
                 fogs.extend(zone.fog_volumes.clone());
+                clouds.extend(zone.cloud_volumes.clone()); // NEW
                 
             } else if zone.is_loaded {
                 zone.unload_from_ram();
             }
         }
 
-        (models, spots, points, rivers, smokes, fires, weathers, fogs)
+        (models, spots, points, rivers, smokes, fires, weathers, fogs, clouds)
     }
 }

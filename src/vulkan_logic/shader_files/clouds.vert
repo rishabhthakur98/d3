@@ -1,15 +1,23 @@
+// src/vulkan_logic/shader_files/clouds.vert
 #version 450
+
+struct CloudVolumeData {
+    vec4 min_bounds;      // xyz: min_bounds, w: coverage
+    vec4 max_bounds;      // xyz: max_bounds, w: density
+    vec4 base_color;      // xyz: base_color, w: wind_speed
+    vec4 highlight_color; // xyz: highlight_color
+    vec4 wind_dir;        // xyz: wind_direction
+};
 
 layout(set = 0, binding = 0) uniform CloudUBO {
     mat4 inv_view_proj;
     vec4 camera_pos;
     vec4 sun_dir;
     vec4 sun_color;
-    vec4 base_color;
-    vec4 highlight_color;
-    vec4 params; 
-    vec4 wind_dir;
-    vec4 heights; 
+    float time;
+    uint cloud_count;
+    uint pad1, pad2;
+    CloudVolumeData clouds[10];
 } ubo;
 
 layout(location = 0) out vec3 fragRayDir;

@@ -1,5 +1,4 @@
 // src/app/events/render_loop.rs
-
 use std::time::{Instant, Duration};
 
 use crate::app::engine_state::EngineApp;
@@ -15,13 +14,13 @@ impl EngineApp {
         
         if let (Some(renderer), Some(window), Some(state)) = (&mut self.renderer, &self.window, &mut self.egui_state) {
             
-            // Unpack 8 items safely returned from the streamer
-            let (visible_objects, active_spots, active_points, active_rivers, active_smokes, active_fires, active_weathers, active_fogs) = if self.is_playing {
+            // 1. Cull the local streamer and dump dynamic array values securely
+            let (visible_objects, active_spots, active_points, active_rivers, active_smokes, active_fires, active_weathers, active_fogs, active_clouds) = if self.is_playing {
                 game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
                 self.world_streamer.tick(delta_time); 
                 self.world_streamer.get_visible_objects(self.camera.position)
             } else { 
-                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()) 
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()) 
             };
 
             let raw_input = state.take_egui_input(window.as_ref());
@@ -67,9 +66,9 @@ impl EngineApp {
                 &active_points, 
                 &visible_objects,
                 &self.skybox_config, 
-                &self.cloud_config, 
+                &active_clouds, // MAPPED NEW LOCAL CLOUDS
                 &active_rivers,
-                &active_fogs,     // Route new Localized Fog Arrays
+                &active_fogs,
                 &active_smokes, 
                 &active_fires,
                 &active_weathers, 
@@ -81,9 +80,7 @@ impl EngineApp {
             if frame_config::LIMIT_FRAMES {
                 let elapsed = self.last_frame_time.elapsed();
                 let target = Duration::from_secs_f64(1.0 / frame_config::TARGET_FPS as f64);
-                if elapsed < target { 
-                    std::thread::sleep(target - elapsed); 
-                }
+                if elapsed < target { std::thread::sleep(target - elapsed); }
             }
             self.last_frame_time = Instant::now();
         }
