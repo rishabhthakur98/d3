@@ -25,20 +25,21 @@ pub struct PointLightData {
     pub color: Vec4,     // xyz: Color, w: Intensity
 }
 
-impl Default for GlobalLightData {
-    fn default() -> Self { Self { direction: Vec4::ZERO, color: Vec4::ZERO } }
+// NEW: Data mapped to the GLSL Fog Volume Raymarcher
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FogVolumeData {
+    pub min_bounds: Vec4,    // xyz: Min Bounds, w: padding
+    pub max_bounds: Vec4,    // xyz: Max Bounds, w: padding
+    pub color_density: Vec4, // xyz: Color, w: Density
 }
 
-impl Default for SpotLightData {
-    fn default() -> Self { Self { position: Vec4::ZERO, direction: Vec4::ZERO, color: Vec4::ZERO, params: Vec4::ZERO } }
-}
+impl Default for GlobalLightData { fn default() -> Self { Self { direction: Vec4::ZERO, color: Vec4::ZERO } } }
+impl Default for SpotLightData { fn default() -> Self { Self { position: Vec4::ZERO, direction: Vec4::ZERO, color: Vec4::ZERO, params: Vec4::ZERO } } }
+impl Default for PointLightData { fn default() -> Self { Self { position: Vec4::ZERO, color: Vec4::ZERO } } }
+impl Default for FogVolumeData { fn default() -> Self { Self { min_bounds: Vec4::ZERO, max_bounds: Vec4::ZERO, color_density: Vec4::ZERO } } }
 
-impl Default for PointLightData {
-    fn default() -> Self { Self { position: Vec4::ZERO, color: Vec4::ZERO } }
-}
-
-/// EXPANDED: The main payload sent to the GPU every frame. 
-/// Expanded arrays to support 100 simultaneous active dynamic lights!
+/// The main payload sent to the GPU every frame. 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LightUBO {
@@ -48,12 +49,12 @@ pub struct LightUBO {
     pub global_count: u32,
     pub spot_count: u32,
     pub point_count: u32,          
-    pub _pad: u32,           // Padding to reach next 16-byte boundary
+    pub fog_count: u32,      // Replaced old padding to store fog iteration limit perfectly
     
-    pub fog_color: Vec4,     // xyz: Color, w: Global Density
-    pub fog_params: Vec4,    // x: Height Falloff, y: Height Offset, z: Volumetric Scattering, w: Padding
+    pub global_lights: [GlobalLightData; 4],   
+    pub spot_lights: [SpotLightData; 100],     
+    pub point_lights: [PointLightData; 100],   
     
-    pub global_lights: [GlobalLightData; 4],   // Supports 4 Suns/Moons
-    pub spot_lights: [SpotLightData; 100],     // SCALED: Supports up to 100 dynamic Spotlights
-    pub point_lights: [PointLightData; 100],   // SCALED: Supports up to 100 dynamic Point Lights
+    // NEW: Support for 10 simultaneous localized fog volumes
+    pub fog_volumes: [FogVolumeData; 10],      
 }

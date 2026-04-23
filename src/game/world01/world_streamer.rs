@@ -11,6 +11,7 @@ use crate::fire::emitter::FireEmitter;
 use crate::fire::config::FireConfig;
 use crate::weather::emitter::WeatherEmitter;
 use crate::weather::config::WeatherConfig;
+use crate::volumetrics::fog_config::FogVolume;
 
 #[derive(Clone, Debug)]
 pub struct AssetDefinition {
@@ -37,7 +38,10 @@ pub struct VirtualCuboid {
     pub rivers: Vec<RiverConfig>,
     pub smoke_emitters: Vec<SmokeEmitter>,
     pub fire_emitters: Vec<FireEmitter>,
-    pub weather_emitters: Vec<WeatherEmitter>, // ADDED WEATHER
+    pub weather_emitters: Vec<WeatherEmitter>, 
+    
+    // NEW: Localized Volumetric Fog Arrays
+    pub fog_volumes: Vec<FogVolume>,
     
     pub is_loaded: bool,
     pub loaded_models: Vec<Model>,
@@ -92,9 +96,17 @@ impl WorldStreamer {
             rivers: vec![RiverConfig { position: Vec3::new(0.0, -1.5, 0.0), ..Default::default() }],
             smoke_emitters: vec![SmokeEmitter::new(SmokeConfig { position: Vec3::new(5.0, 4.0, -5.0), ..Default::default() })],
             fire_emitters: vec![FireEmitter::new(FireConfig { position: Vec3::new(-2.0, -1.0, 3.0), ..Default::default() })],
-            
-            // NEW: Configured directly in the zone!
             weather_emitters: vec![WeatherEmitter::new(WeatherConfig::heavy_rain())],
+            
+            // NEW: Configured directly in the zone as a localized box!
+            fog_volumes: vec![
+                FogVolume::new(
+                    Vec3::new(-50.0, -10.0, -50.0), // X Min, Y Min, Z Min
+                    Vec3::new(50.0, 20.0, 50.0),    // X Max, Y Max, Z Max
+                    [0.6, 0.7, 0.8],                // Color
+                    0.025                           // Density Thickness
+                )
+            ],
             
             is_loaded: false,
             loaded_models: Vec::new(),
@@ -114,7 +126,7 @@ impl WorldStreamer {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn get_visible_objects(&mut self, camera_pos: Vec3) -> (Vec<Model>, Vec<SpotLight>, Vec<PointLight>, Vec<RiverConfig>, Vec<SmokeEmitter>, Vec<FireEmitter>, Vec<WeatherEmitter>) {
+    pub fn get_visible_objects(&mut self, camera_pos: Vec3) -> (Vec<Model>, Vec<SpotLight>, Vec<PointLight>, Vec<RiverConfig>, Vec<SmokeEmitter>, Vec<FireEmitter>, Vec<WeatherEmitter>, Vec<FogVolume>) {
         let mut models = Vec::new();
         let mut spots = Vec::new();
         let mut points = Vec::new();
@@ -122,6 +134,7 @@ impl WorldStreamer {
         let mut smokes = Vec::new();
         let mut fires = Vec::new();
         let mut weathers = Vec::new();
+        let mut fogs = Vec::new();
 
         for zone in &mut self.zones {
             if zone.contains(camera_pos) {
@@ -134,12 +147,13 @@ impl WorldStreamer {
                 smokes.extend(zone.smoke_emitters.clone());
                 fires.extend(zone.fire_emitters.clone());
                 weathers.extend(zone.weather_emitters.clone());
+                fogs.extend(zone.fog_volumes.clone());
                 
             } else if zone.is_loaded {
                 zone.unload_from_ram();
             }
         }
 
-        (models, spots, points, rivers, smokes, fires, weathers)
+        (models, spots, points, rivers, smokes, fires, weathers, fogs)
     }
 }

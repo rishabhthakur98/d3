@@ -16,7 +16,7 @@ use crate::water::config::RiverConfig;
 use crate::smoke::emitter::SmokeEmitter;
 use crate::fire::emitter::FireEmitter;
 use crate::weather::emitter::WeatherEmitter;
-use crate::volumetrics::fog_config::FogConfig;
+use crate::volumetrics::fog_config::FogVolume;
 
 impl MasterRenderer {
     #[allow(clippy::too_many_arguments)]
@@ -38,10 +38,10 @@ impl MasterRenderer {
         skybox_config: &SkyboxConfig,
         cloud_config: &CloudConfig, 
         river_configs: &[RiverConfig], 
-        fog_config: &FogConfig,
+        fog_volumes: &[FogVolume], // Mapped
         smoke_emitters: &[SmokeEmitter], 
         fire_emitters: &[FireEmitter], 
-        weather_emitters: &[WeatherEmitter], // Added to rendering signature
+        weather_emitters: &[WeatherEmitter], 
         time: f32,                  
     ) -> Result<()> {
         
@@ -56,7 +56,7 @@ impl MasterRenderer {
             spot_lights,
             point_lights,
             visible_objects,
-            fog_config,
+            fog_volumes,
         )?;
 
         self.update_egui_textures(textures_delta)?;

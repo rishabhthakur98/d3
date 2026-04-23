@@ -15,12 +15,13 @@ impl EngineApp {
         
         if let (Some(renderer), Some(window), Some(state)) = (&mut self.renderer, &self.window, &mut self.egui_state) {
             
-            let (visible_objects, active_spots, active_points, active_rivers, active_smokes, active_fires, active_weathers) = if self.is_playing {
+            // Unpack 8 items safely returned from the streamer
+            let (visible_objects, active_spots, active_points, active_rivers, active_smokes, active_fires, active_weathers, active_fogs) = if self.is_playing {
                 game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
                 self.world_streamer.tick(delta_time); 
                 self.world_streamer.get_visible_objects(self.camera.position)
             } else { 
-                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()) 
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()) 
             };
 
             let raw_input = state.take_egui_input(window.as_ref());
@@ -68,10 +69,10 @@ impl EngineApp {
                 &self.skybox_config, 
                 &self.cloud_config, 
                 &active_rivers,
-                &self.fog_config, 
+                &active_fogs,     // Route new Localized Fog Arrays
                 &active_smokes, 
                 &active_fires,
-                &active_weathers, // Pass dynamic weather!
+                &active_weathers, 
                 current_time, 
             ) { 
                 tracing::error!("Draw error: {}", e); 

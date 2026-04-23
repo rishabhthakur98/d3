@@ -27,20 +27,24 @@ struct PointLight {
     vec4 color;
 };
 
+struct FogVolume {
+    vec4 min_bounds;
+    vec4 max_bounds;
+    vec4 color_density;
+};
+
 layout(set = 0, binding = 0) uniform LightUBO {
     vec4 ambient_color;
     vec4 camera_pos;
     uint global_count;
     uint spot_count;
     uint point_count;
-    uint _pad;
-    vec4 fog_color;
-    vec4 fog_params;
+    uint fog_count; 
     
-    // INCREASED: Allows iteration of 100 spawnable entities 
     GlobalLight global_lights[4];
     SpotLight spot_lights[100];
     PointLight point_lights[100];
+    FogVolume fog_volumes[10];
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler2D shadowMap;
@@ -123,46 +127,41 @@ void main() {
     }
 
     vec3 result = (ambient + global_lighting + spot_lighting + point_lighting) * fragColor.xyz;
-    vec3 viewDirFog = ubo.camera_pos.xyz - fragWorldPos;
-    float viewDist = length(viewDirFog);
-    vec3 viewDirNorm = viewDirFog / viewDist;
 
-    float distanceFog = exp(-viewDist * ubo.fog_color.w);
-    float heightFog = exp(-(fragWorldPos.y - ubo.fog_params.y) * ubo.fog_params.x);
-    float finalFogFactor = clamp(distanceFog * heightFog, 0.0, 1.0);
+    // --- NEW LOCALIZED FOG LOGIC ---
+    vec3 ro = ubo.camera_pos.xyz;
+    vec3 re = fragWorldPos;
+    vec3 rd = normalize(re - ro);
+    float rayLength = length(re - ro);
     
-    float inScattering = 0.0;
-    if (ubo.fog_params.z > 0.0 && ubo.global_count > 0 && ubo.global_lights[0].color.w > 0.5) {
-        int steps = 8;
-        float marchDist = min(viewDist, 100.0);
-        float stepSize = marchDist / float(steps);
-        
-        vec3 currentPos = ubo.camera_pos.xyz;
-        vec3 marchDir = -viewDirNorm; 
-        vec3 sunDir = normalize(-ubo.global_lights[0].direction.xyz);
-        
-        for(int i = 0; i < steps; i++) {
-            vec4 shadowSpace = pc.light_space_matrix * vec4(currentPos, 1.0);
-            float shadow = CalculateShadow(shadowSpace, vec3(0.0, 1.0, 0.0), sunDir);
+    // Prevent division by zero during bounds checking
+    vec3 invRd = 1.0 / (rd + 1e-6); 
+
+    // Intersect the view ray against every localized fog box in the current zone
+    for (uint i = 0; i < ubo.fog_count; i++) {
+        FogVolume fog = ubo.fog_volumes[i];
+        vec3 t0 = (fog.min_bounds.xyz - ro) * invRd;
+        vec3 t1 = (fog.max_bounds.xyz - ro) * invRd;
+
+        vec3 tmin = min(t0, t1);
+        vec3 tmax = max(t0, t1);
+
+        float tnear = max(max(tmin.x, tmin.y), tmin.z);
+        float tfar = min(min(tmax.x, tmax.y), tmax.z);
+
+        // Clamp the intersections to what is currently visible on screen
+        tnear = max(tnear, 0.0);
+        tfar = min(tfar, rayLength);
+
+        // If the ray travels through the box at all, calculate volumetric density accumulation
+        if (tnear < tfar) {
+            float distInFog = tfar - tnear;
             
-            inScattering += (1.0 - shadow) * ubo.fog_params.z * stepSize;
-            currentPos += marchDir * stepSize;
+            // Standard Beer-Lambert attenuation (thickness over distance traveled)
+            float fogAmount = 1.0 - exp(-distInFog * fog.color_density.w);
+            result = mix(result, fog.color_density.xyz, fogAmount);
         }
-        
-        inScattering = min(inScattering, 1.5);
-    }
-    
-    float sunDot = 1.0;
-    if (ubo.global_count > 0) {
-        sunDot = max(dot(-viewDirNorm, -normalize(ubo.global_lights[0].direction.xyz)), 0.0);
-    }
-    float miePhase = pow(sunDot, 4.0) * 2.0 + 0.5; 
-    
-    vec3 finalFogColor = ubo.fog_color.xyz;
-    if (ubo.global_count > 0) {
-        finalFogColor += (ubo.global_lights[0].color.xyz * inScattering * miePhase);
     }
 
-    result = mix(finalFogColor, result, finalFogFactor);
     outColor = vec4(result, fragColor.a);
 }

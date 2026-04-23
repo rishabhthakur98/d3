@@ -4,12 +4,11 @@ use anyhow::{anyhow, Result};
 use super::renderer::{MasterRenderer, DrawCall};
 use crate::assets::model::Model;
 
-// FIXED: Imports routed to new hierarchical structure
 use crate::lights::global::directional::GlobalLight;
 use crate::lights::spawnable::spot::SpotLight;
 use crate::lights::spawnable::point::PointLight;
-use crate::lights::core::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData};
-use crate::volumetrics::fog_config::FogConfig;
+use crate::lights::core::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData, FogVolumeData};
+use crate::volumetrics::fog_config::FogVolume;
 
 pub(crate) struct FrameData {
     pub draw_calls: Vec<DrawCall>,
@@ -31,7 +30,7 @@ impl MasterRenderer {
         spot_lights: &[SpotLight],
         point_lights: &[PointLight],
         visible_objects: &[Model], 
-        fog_config: &FogConfig,
+        fog_volumes: &[FogVolume],
     ) -> Result<FrameData> {
         let mut all_vertices = Vec::new();
         let mut all_indices = Vec::new();
@@ -43,21 +42,18 @@ impl MasterRenderer {
         let mut primary_sun_intensity = 0.0;
 
         if is_playing {
-            // Initialize the UBO supporting our massively scaled lighting limits
             let mut ubo = LightUBO {
                 ambient_color: glam::Vec4::new(ambient_color[0], ambient_color[1], ambient_color[2], ambient_intensity),
                 camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 0.0),
                 global_count: 0,
                 spot_count: 0,
                 point_count: 0,
-                _pad: 0,
-                
-                fog_color: glam::Vec4::new(fog_config.color[0], fog_config.color[1], fog_config.color[2], fog_config.global_density),
-                fog_params: glam::Vec4::new(fog_config.height_falloff, fog_config.height_offset, fog_config.volumetric_scattering, 0.0),
+                fog_count: 0,
                 
                 global_lights: [GlobalLightData::default(); 4],
                 spot_lights: [SpotLightData::default(); 100],
                 point_lights: [PointLightData::default(); 100],
+                fog_volumes: [FogVolumeData::default(); 10],
             };
 
             let mut shadow_caster_dir = None;
@@ -125,6 +121,19 @@ impl MasterRenderer {
                         color: glam::Vec4::new(point.color[0], point.color[1], point.color[2], point.intensity),
                     };
                     ubo.point_count += 1;
+                }
+            }
+
+            // Fill array bounds
+            for fog in fog_volumes {
+                if ubo.fog_count < 10 {
+                    let idx = ubo.fog_count as usize;
+                    ubo.fog_volumes[idx] = FogVolumeData {
+                        min_bounds: glam::Vec4::new(fog.min_bounds.x, fog.min_bounds.y, fog.min_bounds.z, 0.0),
+                        max_bounds: glam::Vec4::new(fog.max_bounds.x, fog.max_bounds.y, fog.max_bounds.z, 0.0),
+                        color_density: glam::Vec4::new(fog.color[0], fog.color[1], fog.color[2], fog.density),
+                    };
+                    ubo.fog_count += 1;
                 }
             }
 
