@@ -22,27 +22,30 @@ pub struct FireSystem {
 
 impl FireSystem {
     pub fn new(context: &VulkanContext, render_pass: vk::RenderPass) -> Result<Self> {
-        let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
+        let allocator = match context.allocator.as_ref() { 
+            Some(a) => a, 
+            None => return Err(anyhow!("No allocator initialized")),
+        };
 
         let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<FireUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
 
         let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-        let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
+        let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("Layout failed: {}", e))?;
 
         let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
-        let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("{}", e))?;
+        let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("Pool failed: {}", e))?;
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&descriptor_set_layout));
-        let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("{}", e))?[0];
+        let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("Desc Allocation failed: {}", e))?[0];
 
         let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer.buffer).offset(0).range(std::mem::size_of::<FireUBO>() as u64);
         let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout));
-        let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
+        let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Pipeline layout err: {}", e))?;
 
         let vert_code = Self::read_shader("src/vulkan_logic/compiled_shaders/fire.vert.spv")?;
         let frag_code = Self::read_shader("src/vulkan_logic/compiled_shaders/fire.frag.spv")?;
@@ -88,14 +91,21 @@ impl FireSystem {
 
         let pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }.map_err(|e| anyhow!("{:?}", e.1))?[0];
 
-        unsafe { context.device.destroy_shader_module(vert_mod, None); context.device.destroy_shader_module(frag_mod, None); }
+        unsafe { 
+            context.device.destroy_shader_module(vert_mod, None); 
+            context.device.destroy_shader_module(frag_mod, None); 
+        }
 
         Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
     }
 
-    pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, emitter: &FireEmitter, view_proj: glam::Mat4, camera_view: glam::Mat4) -> Result<()> {
-        let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
-        if emitter.particles.is_empty() { return Ok(()); }
+    pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, emitters: &[FireEmitter], view_proj: glam::Mat4, camera_view: glam::Mat4) -> Result<()> {
+        let allocator = match context.allocator.as_ref() { 
+            Some(a) => a, 
+            None => return Err(anyhow!("No allocator present for drawing")),
+        };
+        
+        if emitters.is_empty() { return Ok(()); }
 
         let inv_view = camera_view.inverse();
 
@@ -103,18 +113,25 @@ impl FireSystem {
             view_proj,
             camera_right: inv_view.x_axis,
             camera_up: inv_view.y_axis,
-            particle_count: emitter.particles.len() as u32,
+            particle_count: 0,
             _pad: [0; 3],
             particles: [FireParticleData::default(); 500],
         };
 
-        for (i, p) in emitter.particles.iter().enumerate().take(500) {
-            ubo.particles[i] = FireParticleData {
-                position: glam::Vec4::new(p.position.x, p.position.y, p.position.z, p.scale),
-                color: glam::Vec4::new(p.color[0], p.color[1], p.color[2], p.alpha),
-            };
+        // Merge particles seamlessly from ALL active world nodes into the unified UBO
+        for emitter in emitters {
+            for p in &emitter.particles {
+                if ubo.particle_count < 500 {
+                    ubo.particles[ubo.particle_count as usize] = FireParticleData {
+                        position: glam::Vec4::new(p.position.x, p.position.y, p.position.z, p.scale),
+                        color: glam::Vec4::new(p.color[0], p.color[1], p.color[2], p.alpha),
+                    };
+                    ubo.particle_count += 1;
+                }
+            }
         }
-
+        
+        if ubo.particle_count == 0 { return Ok(()); }
         self.ubo_buffer.upload_data(allocator, &[ubo])?;
 
         unsafe {
@@ -135,6 +152,16 @@ impl FireSystem {
         }
     }
     
-    fn read_shader(p: &str) -> Result<Vec<u8>> { let mut f = File::open(p).map_err(|e| anyhow!("{}", e))?; let mut b = Vec::new(); f.read_to_end(&mut b).map_err(|e| anyhow!("{}", e))?; Ok(b) }
-    fn create_module(d: &ash::Device, c: &[u8]) -> Result<vk::ShaderModule> { let (p, code, s) = unsafe { c.align_to::<u32>() }; if !p.is_empty() || !s.is_empty() { return Err(anyhow!("Align err")); } unsafe { d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None) }.map_err(|e| anyhow!("{}", e)) }
+    fn read_shader(p: &str) -> Result<Vec<u8>> { 
+        let mut f = File::open(p).map_err(|e| anyhow!("File error {}: {}", p, e))?; 
+        let mut b = Vec::new(); 
+        f.read_to_end(&mut b).map_err(|e| anyhow!("Read error: {}", e))?; 
+        Ok(b) 
+    }
+    
+    fn create_module(d: &ash::Device, c: &[u8]) -> Result<vk::ShaderModule> { 
+        let (p, code, s) = unsafe { c.align_to::<u32>() }; 
+        if !p.is_empty() || !s.is_empty() { return Err(anyhow!("Alignment error")); } 
+        unsafe { d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None) }.map_err(|e| anyhow!("Module failed: {}", e)) 
+    }
 }

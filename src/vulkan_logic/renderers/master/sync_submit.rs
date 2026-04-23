@@ -15,15 +15,15 @@ impl MasterRenderer {
     }
 
     pub(crate) fn update_egui_textures(&mut self, textures_delta: &egui::TexturesDelta) -> Result<()> {
-        unsafe {
-            if !textures_delta.set.is_empty() {
-                self.egui_renderer.set_textures(self.context.graphics_queue, self.sync.command_pool, textures_delta.set.as_slice())
-                    .map_err(|e| anyhow!("Failed to upload egui textures: {}", e))?;
-            }
-            if !textures_delta.free.is_empty() {
-                self.egui_renderer.free_textures(textures_delta.free.as_slice())
-                    .map_err(|e| anyhow!("Failed to free egui textures: {}", e))?;
-            }
+        // FIXED: Removed the unnecessary `unsafe {}` block, as these texture allocations
+        // are strictly abstracted as safe Rust logic inside the Egui-Ash renderer implementation
+        if !textures_delta.set.is_empty() {
+            self.egui_renderer.set_textures(self.context.graphics_queue, self.sync.command_pool, textures_delta.set.as_slice())
+                .map_err(|e| anyhow!("Failed to upload egui textures: {}", e))?;
+        }
+        if !textures_delta.free.is_empty() {
+            self.egui_renderer.free_textures(textures_delta.free.as_slice())
+                .map_err(|e| anyhow!("Failed to free egui textures: {}", e))?;
         }
         Ok(())
     }

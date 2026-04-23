@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crate::app::engine_state::EngineApp;
 use crate::game::menu::EngineAction;
-use crate::{game, water};
+use crate::game;
 
 impl EngineApp {
     pub(crate) fn handle_device_event(&mut self, event: DeviceEvent) {
@@ -66,24 +66,11 @@ impl EngineApp {
                         self.input_state = game::world01::controls::InputState::default();
                         self.last_update_time = Instant::now(); 
                         
-                        // FIXED: Loading ambient vs global light separately from the new routing
                         self.ambient_color = game::world01::ambient_light_config::AMBIENT_LIGHT_COLOR;
                         self.ambient_intensity = game::world01::ambient_light_config::AMBIENT_LIGHT_INTENSITY;
                         self.global_lights = game::world01::global_light_config::get_global_lights();
                         self.skybox_config = game::world01::skybox_config::get_skybox_config();
                         
-                        let mut river = water::config::RiverConfig::default();
-                        river.position = glam::Vec3::new(0.0, -1.5, 0.0);
-                        self.river_config = river;
-
-                        let mut smoke_cfg = crate::smoke::config::SmokeConfig::default();
-                        smoke_cfg.position = glam::Vec3::new(5.0, 4.0, -5.0); 
-                        self.smoke_emitter = crate::smoke::emitter::SmokeEmitter::new(smoke_cfg);
-
-                        let mut fire_cfg = crate::fire::config::FireConfig::default();
-                        fire_cfg.position = glam::Vec3::new(-2.0, -1.0, 3.0); 
-                        self.fire_emitter = crate::fire::emitter::FireEmitter::new(fire_cfg);
-
                         self.weather_emitter.set_weather(crate::weather::config::WeatherConfig::heavy_rain());
 
                         if let Some(w) = &self.window { 

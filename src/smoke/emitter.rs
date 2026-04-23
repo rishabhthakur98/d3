@@ -13,7 +13,10 @@ pub struct Particle {
 }
 
 // A zero-dependency pseudo-random number generator for particle velocity
+// Added Clone and Debug derives to allow the parent SmokeEmitter to be cloned
+#[derive(Clone, Debug)] 
 struct Lcg { state: u32 }
+
 impl Lcg {
     fn new(seed: u32) -> Self { Self { state: seed } }
     fn next_f32(&mut self) -> f32 {
@@ -23,6 +26,8 @@ impl Lcg {
 }
 
 /// The CPU simulation that calculates particle physics every frame
+/// Added Clone derive so the WorldStreamer can hand off arrays safely to the Renderer
+#[derive(Clone)] 
 pub struct SmokeEmitter {
     pub config: SmokeConfig,
     pub particles: Vec<Particle>,

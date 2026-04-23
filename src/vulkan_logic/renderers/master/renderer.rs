@@ -14,7 +14,6 @@ use crate::vulkan_logic::pipelines::main_pipeline::MainPipeline;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
 use crate::vulkan_logic::passes::shadow_pass::ShadowPass;
 
-// FIXED: UBO dependency mapped from the new Core lighting architecture
 use crate::lights::core::ubo::LightUBO;
 
 use crate::vulkan_logic::renderers::skybox_renderer::SkyboxSystem;
@@ -23,7 +22,6 @@ use crate::vulkan_logic::renderers::smoke_renderer::SmokeSystem;
 use crate::vulkan_logic::renderers::cloud_renderer::CloudSystem;
 use crate::vulkan_logic::renderers::fire_renderer::FireSystem;
 use crate::vulkan_logic::renderers::weather_renderer::WeatherSystem;
-use crate::water::config::RiverConfig;
 
 #[derive(Clone, Debug)]
 pub(crate) struct DrawCall {
@@ -72,8 +70,8 @@ impl MasterRenderer {
         let skybox_system = SkyboxSystem::new(&context, swapchain_mgr.render_pass)?;
         let cloud_system = CloudSystem::new(&context, swapchain_mgr.render_pass)?; 
         
-        let river_config = RiverConfig::default();
-        let river_system = RiverSystem::new(&context, swapchain_mgr.render_pass, &river_config)?;
+        // Dropped Config argument since River System handles instances natively now
+        let river_system = RiverSystem::new(&context, swapchain_mgr.render_pass)?;
         
         let smoke_system = SmokeSystem::new(&context, swapchain_mgr.render_pass)?; 
         let fire_system = FireSystem::new(&context, swapchain_mgr.render_pass)?; 

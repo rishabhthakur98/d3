@@ -14,6 +14,8 @@ pub struct FireParticle {
 }
 
 // Pseudo-random number generator for randomizing flame flicker
+// FIXED: Added Clone and Debug so the parent struct can be cloned
+#[derive(Clone, Debug)]
 struct Lcg { state: u32 }
 impl Lcg {
     fn new(seed: u32) -> Self { Self { state: seed } }
@@ -23,6 +25,8 @@ impl Lcg {
     }
 }
 
+// FIXED: Added Clone so WorldStreamer can copy the arrays into the render loop
+#[derive(Clone)]
 pub struct FireEmitter {
     pub config: FireConfig,
     pub particles: Vec<FireParticle>,

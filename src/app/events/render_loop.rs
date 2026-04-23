@@ -6,10 +6,6 @@ use crate::app::engine_state::EngineApp;
 use crate::{game, frame_config};
 
 impl EngineApp {
-    // --------------------------------------------------------------------------------
-    // The heaviest function in the CPU timeline. Calculates physics ticks, gathers UI
-    // states, parses visibility, and feeds everything over to the MasterRenderer.
-    // --------------------------------------------------------------------------------
     pub(crate) fn process_redraw(&mut self) {
         let now = Instant::now();
         let delta_time = (now - self.last_update_time).as_secs_f32();
@@ -20,16 +16,16 @@ impl EngineApp {
         if let (Some(renderer), Some(window), Some(state)) = (&mut self.renderer, &self.window, &mut self.egui_state) {
             
             // 1. Step Physical World and Spatial Culling
-            let (visible_objects, active_spots, active_points) = if self.is_playing {
+            let (visible_objects, active_spots, active_points, active_rivers, active_smokes, active_fires) = if self.is_playing {
                 game::world01::controls::update_camera_position(&mut self.camera, &self.input_state, delta_time);
                 
-                self.smoke_emitter.tick(delta_time); 
-                self.fire_emitter.tick(delta_time); 
+                // Weather continues globally around the camera, while localized emitters run via Streamer
                 self.weather_emitter.tick(delta_time); 
+                self.world_streamer.tick(delta_time); 
                 
                 self.world_streamer.get_visible_objects(self.camera.position)
             } else { 
-                (Vec::new(), Vec::new(), Vec::new()) 
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()) 
             };
 
             // 2. Map and Tessellate UI
@@ -61,7 +57,7 @@ impl EngineApp {
             state.handle_platform_output(window.as_ref(), full_output.platform_output);
             let clipped_primitives = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
 
-            // 3. Issue dispatch to the heavily decoupled Master Renderer
+            // 3. Issue dispatch to the Master Renderer, dumping the arrays directly
             if let Err(e) = renderer.draw_frame(
                 window.as_ref(), 
                 &clipped_primitives, 
@@ -78,17 +74,17 @@ impl EngineApp {
                 &visible_objects,
                 &self.skybox_config, 
                 &self.cloud_config, 
-                &self.river_config, 
+                &active_rivers,
                 &self.fog_config, 
-                &self.smoke_emitter, 
-                &self.fire_emitter, 
+                &active_smokes, 
+                &active_fires,
                 &self.weather_emitter,
                 current_time, 
             ) { 
                 tracing::error!("Draw error: {}", e); 
             }
 
-            // 4. Stifle CPU loop if hardware frame pacing is required to prevent overheating
+            // 4. Stifle CPU loop if hardware frame pacing is required
             if frame_config::LIMIT_FRAMES {
                 let elapsed = self.last_frame_time.elapsed();
                 let target = Duration::from_secs_f64(1.0 / frame_config::TARGET_FPS as f64);

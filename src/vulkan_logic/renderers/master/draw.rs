@@ -6,7 +6,6 @@ use super::renderer::MasterRenderer;
 
 use crate::assets::model::Model; 
 
-// FIXED: Mapped to the new lighting hierarchy
 use crate::lights::global::directional::GlobalLight;
 use crate::lights::spawnable::spot::SpotLight; 
 use crate::lights::spawnable::point::PointLight;
@@ -38,10 +37,10 @@ impl MasterRenderer {
         visible_objects: &[Model],  
         skybox_config: &SkyboxConfig,
         cloud_config: &CloudConfig, 
-        river_config: &RiverConfig, 
+        river_configs: &[RiverConfig], // Updated Array routing
         fog_config: &FogConfig,
-        smoke_emitter: &SmokeEmitter, 
-        fire_emitter: &FireEmitter, 
+        smoke_emitters: &[SmokeEmitter], // Updated Array routing
+        fire_emitters: &[FireEmitter], // Updated Array routing
         weather_emitter: &WeatherEmitter,
         time: f32,                  
     ) -> Result<()> {
@@ -82,9 +81,9 @@ impl MasterRenderer {
             &frame_data,
             skybox_config,
             cloud_config,
-            river_config,
-            smoke_emitter,
-            fire_emitter,
+            river_configs,
+            smoke_emitters,
+            fire_emitters,
             weather_emitter,
             clipped_primitives,
             pixels_per_point,
