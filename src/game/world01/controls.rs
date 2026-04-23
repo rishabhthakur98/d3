@@ -1,63 +1,107 @@
+// src/game/world01/controls.rs
+
 use winit::keyboard::KeyCode;
-use glam::Vec3;
-use super::camera::FreeformCamera;
-use super::camera_config::{DEFAULT_CAMERA_SPEED, DEFAULT_CAMERA_SENSITIVITY};
 use crate::game::menu::EngineAction;
+use super::camera::FreeformCamera;
+use super::camera_config;
 
+#[derive(Default)]
 pub struct InputState {
-    pub forward: bool,
-    pub backward: bool,
-    pub left: bool,
-    pub right: bool,
-    pub up: bool,
-    pub down: bool,
+    // Positional Movement
+    pub move_forward: bool,
+    pub move_backward: bool,
+    pub move_left: bool,
+    pub move_right: bool,
+    pub move_up: bool,
+    pub move_down: bool,
+    
+    // Rotational Movement (Keyboard Fallbacks)
+    pub pitch_up: bool,
+    pub pitch_down: bool,
+    pub yaw_left: bool,
+    pub yaw_right: bool,
+    
+    // Roll & Reset
+    pub roll_cw: bool,
+    pub roll_ccw: bool,
+    pub reset_view: bool,
 }
 
-impl Default for InputState {
-    fn default() -> Self {
-        Self { forward: false, backward: false, left: false, right: false, up: false, down: false }
-    }
+/// Applies raw mouse delta to the camera Pitch and Yaw
+pub fn handle_mouse(camera: &mut FreeformCamera, dx: f64, dy: f64) {
+    camera.yaw += (dx as f32) * camera_config::DEFAULT_CAMERA_SENSITIVITY * 100.0;
+    camera.pitch -= (dy as f32) * camera_config::DEFAULT_CAMERA_SENSITIVITY * 100.0;
+
+    // Clamp pitch to prevent the camera from flipping upside down natively
+    camera.pitch = camera.pitch.clamp(-89.0, 89.0);
+    camera.update_camera_vectors();
 }
 
-/// Handles key presses for camera movement. Escape returns to the menu.
+/// Maps keyboard presses to logical state flags
 pub fn handle_keyboard(state: &mut InputState, keycode: KeyCode, is_pressed: bool) -> EngineAction {
     match keycode {
-        KeyCode::KeyW => state.forward = is_pressed,
-        KeyCode::KeyS => state.backward = is_pressed,
-        KeyCode::KeyA => state.left = is_pressed,
-        KeyCode::KeyD => state.right = is_pressed,
-        KeyCode::Space => state.up = is_pressed,
-        KeyCode::ShiftLeft => state.down = is_pressed,
-        KeyCode::Escape if is_pressed => return EngineAction::ReturnToMenu, // Escape hook!
+        // Translation
+        KeyCode::KeyW => state.move_forward = is_pressed,
+        KeyCode::KeyS => state.move_backward = is_pressed,
+        KeyCode::KeyA => state.move_left = is_pressed,
+        KeyCode::KeyD => state.move_right = is_pressed,
+        KeyCode::Space => state.move_up = is_pressed,
+        KeyCode::ShiftLeft => state.move_down = is_pressed,
+        
+        // Rotation via Arrows
+        KeyCode::ArrowUp => state.pitch_up = is_pressed,
+        KeyCode::ArrowDown => state.pitch_down = is_pressed,
+        KeyCode::ArrowLeft => state.yaw_left = is_pressed,
+        KeyCode::ArrowRight => state.yaw_right = is_pressed,
+        
+        // Roll & Reset
+        KeyCode::KeyE => state.roll_cw = is_pressed,
+        KeyCode::KeyQ => state.roll_ccw = is_pressed,
+        KeyCode::KeyR => state.reset_view = is_pressed,
+
+        KeyCode::Escape if is_pressed => return EngineAction::ReturnToMenu,
         _ => {}
     }
-    EngineAction::Continue
+    
+    // FIXED: Changed `EngineAction::None` to `EngineAction::Continue`
+    EngineAction::Continue 
 }
 
-/// Updates the camera's physical position based on current active inputs
+/// Consumes the input state and updates the camera's physical properties
 pub fn update_camera_position(camera: &mut FreeformCamera, state: &InputState, delta_time: f32) {
-    let forward = camera.get_forward_vector();
-    let up = Vec3::new(0.0, 1.0, 0.0);
-    // Cross product gets the vector pointing to the right
-    let right = forward.cross(up).normalize();
+    let velocity = camera_config::DEFAULT_CAMERA_SPEED * delta_time;
+    let turn_speed = camera_config::ARROW_KEY_SENSITIVITY * delta_time;
+    let roll_speed = camera_config::ROLL_SENSITIVITY * delta_time;
 
-    let velocity = DEFAULT_CAMERA_SPEED * delta_time;
+    let mut moved = false;
 
-    if state.forward { camera.position += forward * velocity; }
-    if state.backward { camera.position -= forward * velocity; }
-    if state.right { camera.position += right * velocity; }
-    if state.left { camera.position -= right * velocity; }
-    if state.up { camera.position += up * velocity; }
-    if state.down { camera.position -= up * velocity; }
-}
+    // 1. Handle Orientation Reset
+    if state.reset_view {
+        camera.reset_orientation();
+    } else {
+        // 2. Handle Arrow Key Rotation
+        if state.pitch_up { camera.pitch += turn_speed; moved = true; }
+        if state.pitch_down { camera.pitch -= turn_speed; moved = true; }
+        if state.yaw_left { camera.yaw -= turn_speed; moved = true; }
+        if state.yaw_right { camera.yaw += turn_speed; moved = true; }
+        
+        // 3. Handle Roll
+        if state.roll_cw { camera.roll += roll_speed; moved = true; }
+        if state.roll_ccw { camera.roll -= roll_speed; moved = true; }
 
-/// Handles mouse movement to rotate the camera
-pub fn handle_mouse(camera: &mut FreeformCamera, delta_x: f64, delta_y: f64) {
-    camera.yaw += (delta_x as f32) * DEFAULT_CAMERA_SENSITIVITY;
-    camera.pitch -= (delta_y as f32) * DEFAULT_CAMERA_SENSITIVITY; // Inverted Y axis
+        if moved {
+            camera.pitch = camera.pitch.clamp(-89.0, 89.0);
+            camera.update_camera_vectors();
+        }
+    }
 
-    // Clamp pitch to prevent the camera from flipping upside down
-    let max_pitch = 89.0_f32.to_radians();
-    if camera.pitch > max_pitch { camera.pitch = max_pitch; }
-    if camera.pitch < -max_pitch { camera.pitch = -max_pitch; }
+    // 4. Handle Positional Movement along local axes
+    if state.move_forward { camera.position += camera.front * velocity; }
+    if state.move_backward { camera.position -= camera.front * velocity; }
+    if state.move_left { camera.position -= camera.right * velocity; }
+    if state.move_right { camera.position += camera.right * velocity; }
+    
+    // World Up/Down movement
+    if state.move_up { camera.position += glam::Vec3::Y * velocity; }
+    if state.move_down { camera.position -= glam::Vec3::Y * velocity; }
 }

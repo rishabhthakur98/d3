@@ -1,42 +1,75 @@
 // src/game/world01/camera.rs
 
-use glam::{Mat4, Vec3};
-use super::camera_config::{INITIAL_CAMERA_POS, INITIAL_CAMERA_PITCH, INITIAL_CAMERA_YAW};
+use glam::{Mat4, Vec3, Quat};
+use super::camera_config;
 
 pub struct FreeformCamera {
     pub position: Vec3,
-    pub pitch: f32, // Up/Down rotation
-    pub yaw: f32,   // Left/Right rotation
+    
+    // Euler angles in degrees
+    pub pitch: f32,
+    pub yaw: f32,
+    pub roll: f32,
+
+    // Local spatial vectors
+    pub front: Vec3,
+    pub up: Vec3,
+    pub right: Vec3,
 }
 
 impl Default for FreeformCamera {
     fn default() -> Self {
-        Self {
-            // Read directly from the clean config file
-            position: Vec3::from_array(INITIAL_CAMERA_POS), 
-            pitch: INITIAL_CAMERA_PITCH.to_radians(),
-            yaw: INITIAL_CAMERA_YAW.to_radians(), 
-        }
+        let mut cam = Self {
+            position: Vec3::from_array(camera_config::INITIAL_CAMERA_POS),
+            pitch: camera_config::INITIAL_CAMERA_PITCH,
+            yaw: camera_config::INITIAL_CAMERA_YAW,
+            roll: camera_config::INITIAL_CAMERA_ROLL,
+            front: Vec3::new(0.0, 0.0, -1.0),
+            up: Vec3::Y,
+            right: Vec3::X,
+        };
+        cam.update_camera_vectors();
+        cam
     }
 }
 
 impl FreeformCamera {
-    /// Calculates the forward vector based on pitch and yaw
-    pub fn get_forward_vector(&self) -> Vec3 {
-        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
-        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-
-        Vec3::new(
-            cos_yaw * cos_pitch,
-            sin_pitch,
-            sin_yaw * cos_pitch,
-        ).normalize()
+    /// Resets the rotation of the camera back to spawn values, but keeps the current position intact
+    pub fn reset_orientation(&mut self) {
+        self.pitch = camera_config::INITIAL_CAMERA_PITCH;
+        self.yaw = camera_config::INITIAL_CAMERA_YAW;
+        self.roll = camera_config::INITIAL_CAMERA_ROLL;
+        self.update_camera_vectors();
     }
 
-    /// Calculates the View Matrix required by the Vertex Shader
+    /// Recalculates the Front, Right, and Up vectors based on Pitch, Yaw, and Roll
+    pub fn update_camera_vectors(&mut self) {
+        // 1. Calculate standard Forward direction from Pitch and Yaw
+        let yaw_rad = self.yaw.to_radians();
+        let pitch_rad = self.pitch.to_radians();
+
+        self.front = Vec3::new(
+            yaw_rad.cos() * pitch_rad.cos(),
+            pitch_rad.sin(),
+            yaw_rad.sin() * pitch_rad.cos(),
+        ).normalize();
+
+        // 2. Calculate baseline Right and Up without any roll
+        let world_up = Vec3::Y;
+        let right_base = self.front.cross(world_up).normalize();
+        let up_base = right_base.cross(self.front).normalize();
+
+        // 3. Apply the Roll! 
+        // We do this by rotating the base Right and Up vectors around the Front vector.
+        let roll_rad = self.roll.to_radians();
+        let roll_rotation = Quat::from_axis_angle(self.front, roll_rad);
+
+        self.right = roll_rotation * right_base;
+        self.up = roll_rotation * up_base;
+    }
+
+    /// Generates the matrix required by Vulkan shaders to render the scene from this perspective
     pub fn get_view_matrix(&self) -> Mat4 {
-        let forward = self.get_forward_vector();
-        let world_up = Vec3::new(0.0, 1.0, 0.0);
-        Mat4::look_to_rh(self.position, forward, world_up)
+        Mat4::look_at_rh(self.position, self.position + self.front, self.up)
     }
 }
