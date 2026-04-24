@@ -1,8 +1,5 @@
 // src/vulkan_logic/config/paths.rs
-
-// --------------------------------------------------------------------------------
-// Centralized configuration for all compiled SPIR-V shader locations.
-// --------------------------------------------------------------------------------
+#![allow(dead_code)] 
 
 pub const SHADER_DIR: &str = "src/vulkan_logic/compiled_shaders/";
 

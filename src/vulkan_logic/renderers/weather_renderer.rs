@@ -1,5 +1,4 @@
 // src/vulkan_logic/renderers/weather_renderer.rs
-
 use anyhow::{anyhow, Result};
 use ash::vk;
 use std::ffi::CStr;
@@ -8,6 +7,8 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
+use crate::vulkan_logic::config::paths; // FIXED IMPORT
+
 use crate::weather::ubo::{WeatherUBO, WeatherParticleData};
 use crate::weather::emitter::WeatherEmitter;
 use crate::weather::config::WeatherType;
@@ -45,8 +46,9 @@ impl WeatherSystem {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
-        let vert_code = Self::read_shader("src/vulkan_logic/compiled_shaders/weather.vert.spv")?;
-        let frag_code = Self::read_shader("src/vulkan_logic/compiled_shaders/weather.frag.spv")?;
+        // USES CENTRALIZED SHADER PATHS
+        let vert_code = Self::read_shader(paths::WEATHER_VERT)?;
+        let frag_code = Self::read_shader(paths::WEATHER_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
         let frag_mod = Self::create_module(&context.device, &frag_code)?;
         let entry = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
@@ -73,11 +75,9 @@ impl WeatherSystem {
         let multisample_info = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
-            .stages(&shader_stages)
-            .vertex_input_state(&vertex_input).input_assembly_state(&assembly).viewport_state(&viewport).rasterization_state(&rasterizer)
-            .multisample_state(&multisample_info)
-            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blend_state)
-            .dynamic_state(&dynamic_state_info)
+            .stages(&shader_stages).vertex_input_state(&vertex_input).input_assembly_state(&assembly)
+            .viewport_state(&viewport).rasterization_state(&rasterizer).multisample_state(&multisample_info)
+            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blend_state).dynamic_state(&dynamic_state_info)
             .layout(pipeline_layout).render_pass(render_pass).subpass(0);
 
         let pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }.map_err(|e| anyhow!("{:?}", e.1))?[0];
@@ -94,16 +94,11 @@ impl WeatherSystem {
         let inv_view = camera_view.inverse();
 
         let mut ubo = WeatherUBO {
-            view_proj,
-            camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 1.0),
-            camera_right: inv_view.x_axis,
-            camera_up: inv_view.y_axis,
-            particle_count: 0,
-            _pad: [0; 3],
+            view_proj, camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 1.0),
+            camera_right: inv_view.x_axis, camera_up: inv_view.y_axis, particle_count: 0, _pad: [0; 3],
             particles: [WeatherParticleData::default(); 3000],
         };
 
-        // AAA Batch merging! Combines 3000 dynamic rain/snow elements into a single massive GPU draw command
         for emitter in emitters {
             if emitter.config.weather_type == WeatherType::None { continue; }
             let is_rain = if emitter.config.weather_type == WeatherType::Rain { 1.0 } else { 0.0 };

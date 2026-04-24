@@ -1,5 +1,4 @@
 // src/vulkan_logic/renderers/cloud_renderer.rs
-
 use anyhow::{anyhow, Result};
 use ash::vk;
 use std::ffi::CStr;
@@ -8,6 +7,8 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
+use crate::vulkan_logic::config::paths; // FIXED IMPORT
+
 use crate::clouds::ubo::{CloudUBO, CloudVolumeData};
 use crate::clouds::config::CloudVolume;
 
@@ -44,8 +45,9 @@ impl CloudSystem {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
-        let vert_code = Self::read_shader("src/vulkan_logic/compiled_shaders/clouds.vert.spv")?;
-        let frag_code = Self::read_shader("src/vulkan_logic/compiled_shaders/clouds.frag.spv")?;
+        // USES CENTRALIZED SHADER PATHS
+        let vert_code = Self::read_shader(paths::CLOUD_VERT)?;
+        let frag_code = Self::read_shader(paths::CLOUD_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
         let frag_mod = Self::create_module(&context.device, &frag_code)?;
         let entry = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
@@ -72,11 +74,9 @@ impl CloudSystem {
         let multisample_info = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
-            .stages(&shader_stages)
-            .vertex_input_state(&vertex_input).input_assembly_state(&assembly).viewport_state(&viewport).rasterization_state(&rasterizer)
-            .multisample_state(&multisample_info)
-            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blend_state)
-            .dynamic_state(&dynamic_state_info)
+            .stages(&shader_stages).vertex_input_state(&vertex_input).input_assembly_state(&assembly)
+            .viewport_state(&viewport).rasterization_state(&rasterizer).multisample_state(&multisample_info)
+            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blend_state).dynamic_state(&dynamic_state_info)
             .layout(pipeline_layout).render_pass(render_pass).subpass(0);
 
         let pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }.map_err(|e| anyhow!("{:?}", e.1))?[0];
@@ -92,17 +92,12 @@ impl CloudSystem {
         if clouds.is_empty() { return Ok(()); }
 
         let mut ubo = CloudUBO {
-            inv_view_proj,
-            camera_pos: glam::Vec4::new(cam_pos.x, cam_pos.y, cam_pos.z, 1.0),
+            inv_view_proj, camera_pos: glam::Vec4::new(cam_pos.x, cam_pos.y, cam_pos.z, 1.0),
             sun_dir: glam::Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, intensity),
             sun_color: glam::Vec4::new(sun_color[0], sun_color[1], sun_color[2], 1.0),
-            time,
-            cloud_count: 0,
-            _pad: [0; 2],
-            clouds: [CloudVolumeData::default(); 10],
+            time, cloud_count: 0, _pad: [0; 2], clouds: [CloudVolumeData::default(); 10],
         };
 
-        // AAA Batch loop: Upload multiple dynamic volumes dynamically into a single render call!
         for cloud in clouds {
             if ubo.cloud_count < 10 {
                 let idx = ubo.cloud_count as usize;
@@ -122,7 +117,7 @@ impl CloudSystem {
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             context.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
-            context.device.cmd_draw(cmd, 3, 1, 0, 0); // Draw fullscreen raytracing triangle
+            context.device.cmd_draw(cmd, 3, 1, 0, 0); 
         }
         Ok(())
     }

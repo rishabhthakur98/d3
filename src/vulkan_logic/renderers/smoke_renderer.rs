@@ -1,5 +1,4 @@
 // src/vulkan_logic/renderers/smoke_renderer.rs
-
 use anyhow::{anyhow, Result};
 use ash::vk;
 use std::ffi::CStr;
@@ -8,6 +7,8 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
+use crate::vulkan_logic::config::paths; // FIXED IMPORT
+
 use crate::smoke::ubo::{SmokeUBO, ParticleData};
 use crate::smoke::emitter::SmokeEmitter;
 
@@ -22,10 +23,7 @@ pub struct SmokeSystem {
 
 impl SmokeSystem {
     pub fn new(context: &VulkanContext, render_pass: vk::RenderPass) -> Result<Self> {
-        let allocator = match context.allocator.as_ref() { 
-            Some(a) => a, 
-            None => return Err(anyhow!("No memory allocator found")),
-        };
+        let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No memory allocator found")) };
 
         let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<SmokeUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
 
@@ -47,19 +45,17 @@ impl SmokeSystem {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Pipeline layout failed: {}", e))?;
 
-        let vert_code = Self::read_shader("src/vulkan_logic/compiled_shaders/smoke.vert.spv")?;
-        let frag_code = Self::read_shader("src/vulkan_logic/compiled_shaders/smoke.frag.spv")?;
+        // USES CENTRALIZED SHADER PATHS
+        let vert_code = Self::read_shader(paths::SMOKE_VERT)?;
+        let frag_code = Self::read_shader(paths::SMOKE_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
         let frag_mod = Self::create_module(&context.device, &frag_code)?;
         let entry = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
 
-        // CRITICAL: We do not bind ANY vertex attributes. The shader generates the geometry mathematically!
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
         let assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let viewport = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
-        
-        // Depth writing is OFF so smoke doesn't aggressively block itself in sorting
         let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::LESS);
         
         let blend_attachment = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
@@ -78,44 +74,28 @@ impl SmokeSystem {
         let multisample_info = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
-            .stages(&shader_stages)
-            .vertex_input_state(&vertex_input).input_assembly_state(&assembly).viewport_state(&viewport).rasterization_state(&rasterizer)
-            .multisample_state(&multisample_info)
-            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blend_state)
-            .dynamic_state(&dynamic_state_info)
+            .stages(&shader_stages).vertex_input_state(&vertex_input).input_assembly_state(&assembly).viewport_state(&viewport).rasterization_state(&rasterizer)
+            .multisample_state(&multisample_info).depth_stencil_state(&depth_stencil).color_blend_state(&color_blend_state).dynamic_state(&dynamic_state_info)
             .layout(pipeline_layout).render_pass(render_pass).subpass(0);
 
         let pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }.map_err(|e| anyhow!("{:?}", e.1))?[0];
 
-        unsafe { 
-            context.device.destroy_shader_module(vert_mod, None); 
-            context.device.destroy_shader_module(frag_mod, None); 
-        }
+        unsafe { context.device.destroy_shader_module(vert_mod, None); context.device.destroy_shader_module(frag_mod, None); }
 
         Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
     }
 
     pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, emitters: &[SmokeEmitter], view_proj: glam::Mat4, camera_view: glam::Mat4) -> Result<()> {
-        let allocator = match context.allocator.as_ref() { 
-            Some(a) => a, 
-            None => return Err(anyhow!("No allocator found during draw")),
-        };
-        
+        let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator found during draw")) };
         if emitters.is_empty() { return Ok(()); }
 
-        // Extract camera vectors to keep the smoke constantly facing the lens
         let inv_view = camera_view.inverse();
 
         let mut ubo = SmokeUBO {
-            view_proj,
-            camera_right: inv_view.x_axis,
-            camera_up: inv_view.y_axis,
-            particle_count: 0,
-            _pad: [0; 3],
+            view_proj, camera_right: inv_view.x_axis, camera_up: inv_view.y_axis, particle_count: 0, _pad: [0; 3],
             particles: [ParticleData::default(); 500],
         };
 
-        // Merge particles seamlessly from ALL active world nodes into the fast unified buffer
         for emitter in emitters {
             for p in &emitter.particles {
                 if ubo.particle_count < 500 {
@@ -134,8 +114,6 @@ impl SmokeSystem {
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             context.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
-            
-            // Instanced Rendering! Draw 1 Quad (6 vertices) multiple times (particle_count)
             context.device.cmd_draw(cmd, 6, ubo.particle_count, 0, 0);
         }
         Ok(())
@@ -151,16 +129,6 @@ impl SmokeSystem {
         }
     }
     
-    fn read_shader(p: &str) -> Result<Vec<u8>> { 
-        let mut f = File::open(p).map_err(|e| anyhow!("Missing file {}: {}", p, e))?; 
-        let mut b = Vec::new(); 
-        f.read_to_end(&mut b).map_err(|e| anyhow!("Read error: {}", e))?; 
-        Ok(b) 
-    }
-    
-    fn create_module(d: &ash::Device, c: &[u8]) -> Result<vk::ShaderModule> { 
-        let (p, code, s) = unsafe { c.align_to::<u32>() }; 
-        if !p.is_empty() || !s.is_empty() { return Err(anyhow!("Alignment error in shader")); } 
-        unsafe { d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None) }.map_err(|e| anyhow!("Module error: {}", e)) 
-    }
+    fn read_shader(p: &str) -> Result<Vec<u8>> { let mut f = File::open(p).map_err(|e| anyhow!("Missing file {}: {}", p, e))?; let mut b = Vec::new(); f.read_to_end(&mut b).map_err(|e| anyhow!("Read error: {}", e))?; Ok(b) }
+    fn create_module(d: &ash::Device, c: &[u8]) -> Result<vk::ShaderModule> { let (p, code, s) = unsafe { c.align_to::<u32>() }; if !p.is_empty() || !s.is_empty() { return Err(anyhow!("Alignment error in shader")); } unsafe { d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None) }.map_err(|e| anyhow!("Module error: {}", e)) }
 }

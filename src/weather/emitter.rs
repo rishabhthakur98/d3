@@ -4,11 +4,10 @@ use glam::Vec3;
 
 #[derive(Clone, Debug)]
 pub struct WeatherParticle {
-    pub local_pos: Vec3, // Position relative to the camera's bounding box
-    pub random_seed: f32, // Used for flutter math in the shader
+    pub local_pos: Vec3, 
+    pub random_seed: f32, 
 }
 
-// FIXED: Added Clone and Debug derives so the parent struct can be cloned
 #[derive(Clone, Debug)]
 struct Lcg { state: u32 }
 impl Lcg {
@@ -19,11 +18,11 @@ impl Lcg {
     }
 }
 
-/// FIXED: Added Clone so WorldStreamer can hand off arrays safely to the Renderer
 #[derive(Clone)]
 pub struct WeatherEmitter {
     pub config: WeatherConfig,
     pub particles: Vec<WeatherParticle>,
+    #[allow(dead_code)] 
     rng: Lcg,
 }
 
@@ -32,7 +31,6 @@ impl WeatherEmitter {
         let mut rng = Lcg::new(12345);
         let mut particles = Vec::with_capacity(config.particle_count);
 
-        // Pre-spawn all particles scattered randomly inside the box
         for _ in 0..config.particle_count {
             particles.push(WeatherParticle {
                 local_pos: Vec3::new(
@@ -40,13 +38,14 @@ impl WeatherEmitter {
                     (rng.next_f32() - 0.5) * config.box_size.y,
                     (rng.next_f32() - 0.5) * config.box_size.z,
                 ),
-                random_seed: rng.next_f32() * std::f32::consts::TAU, // Random starting phase for flutter
+                random_seed: rng.next_f32() * std::f32::consts::TAU, 
             });
         }
 
         Self { config, particles, rng }
     }
 
+    #[allow(dead_code)]
     pub fn set_weather(&mut self, config: WeatherConfig) {
         self.config = config;
         self.particles.clear();
@@ -69,13 +68,11 @@ impl WeatherEmitter {
         let half_x = self.config.box_size.x * 0.5;
         let half_z = self.config.box_size.z * 0.5;
 
-        // Apply physics to all particles
         for p in &mut self.particles {
             p.local_pos.y -= self.config.fall_speed * dt;
             p.local_pos.x += self.config.wind_velocity.x * dt;
             p.local_pos.z += self.config.wind_velocity.z * dt;
 
-            // THE AAA TRICK: Wrap particles around to the other side of the box when they leave it!
             if p.local_pos.y < -half_y { p.local_pos.y += self.config.box_size.y; }
             if p.local_pos.x > half_x { p.local_pos.x -= self.config.box_size.x; }
             else if p.local_pos.x < -half_x { p.local_pos.x += self.config.box_size.x; }

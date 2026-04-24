@@ -1,4 +1,4 @@
-// src/vulkan_logic/context.rs
+// src/vulkan_logic/core/context.rs
 
 use anyhow::{anyhow, Result};
 use ash::{khr::surface, vk, Entry, Instance, Device};
@@ -7,6 +7,7 @@ use winit::window::Window;
 use vk_mem::Allocator; 
 
 pub struct VulkanContext {
+    #[allow(dead_code)] // Vulkan requires this to live in memory, even if we don't explicitly read it later
     pub entry: Entry,
     pub instance: Instance,
     pub surface_loader: surface::Instance,
@@ -17,7 +18,6 @@ pub struct VulkanContext {
     pub present_queue: vk::Queue,
     pub graphics_queue_index: u32,
     pub present_queue_index: u32,
-    // Safely wrapped in Option to prevent Double-Free segfaults on drop
     pub allocator: Option<Allocator>, 
 }
 
@@ -42,7 +42,6 @@ impl VulkanContext {
         }?;
         let surface_loader = surface::Instance::new(&entry, &instance);
 
-        // Pattern matching instead of unwrap_or_else
         let physical_device = match unsafe { instance.enumerate_physical_devices() }?.into_iter().next() {
             Some(device) => device,
             None => return Err(anyhow!("No compatible GPU found")),
@@ -67,7 +66,6 @@ impl VulkanContext {
             }
         }
 
-        // Pattern matching instead of unwrap_or_else
         let graphics_queue_index = match graphics_index_opt {
             Some(idx) => idx,
             None => return Err(anyhow!("No graphics queue found on GPU")),
@@ -113,7 +111,6 @@ impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();
-            // Safely drops the memory allocator by consuming the Option
             self.allocator = None; 
             self.device.destroy_device(None);
             self.surface_loader.destroy_surface(self.surface, None);

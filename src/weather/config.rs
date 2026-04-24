@@ -1,9 +1,9 @@
 // src/weather/config.rs
 use glam::Vec3;
 
-// The maximum number of rain drops or snowflakes allowed on the GPU simultaneously.
 pub const MAX_WEATHER_PARTICLES: usize = 3000;
 
+#[allow(dead_code)] // Silences unused variant warnings
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WeatherType {
     None,
@@ -49,6 +49,7 @@ impl WeatherConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn gentle_snow() -> Self {
         Self {
             weather_type: WeatherType::Snow,

@@ -1,13 +1,13 @@
 // src/vulkan_logic/renderers/skybox_renderer.rs
-
 use anyhow::{anyhow, Result};
 use ash::vk;
 use std::fs::File;
 use std::io::Read;
 use std::ffi::CStr;
 
-use crate::vulkan_logic::core::context::VulkanContext; // FIXED IMPORT
-use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer; // FIXED IMPORT
+use crate::vulkan_logic::core::context::VulkanContext;
+use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
+use crate::vulkan_logic::config::paths; // FIXED IMPORT
 
 use crate::skybox::ubo::{SkyboxUBO, SkyboxDiscData, SkyboxCrescentData, SkyboxPushConstants};
 use crate::skybox::config::SkyboxConfig;
@@ -28,48 +28,31 @@ impl SkyboxSystem {
             None => return Err(anyhow!("Vulkan memory allocator was not initialized")),
         };
 
-        let ubo_binding = vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-
+        let ubo_binding = vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT);
         let bindings = [ubo_binding];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-
-        let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }
-            .map_err(|e| anyhow!("Failed to create skybox descriptor set layout: {}", e))?;
+        let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("Failed to create skybox descriptor set layout: {}", e))?;
 
         let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
-        let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }
-            .map_err(|e| anyhow!("Failed to create skybox descriptor pool: {}", e))?;
+        let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("Failed to create skybox descriptor pool: {}", e))?;
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&descriptor_set_layout));
-        let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }
-            .map_err(|e| anyhow!("Failed to allocate skybox descriptor sets: {}", e))?[0];
+        let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("Failed to allocate skybox descriptor sets: {}", e))?[0];
 
         let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<SkyboxUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
 
         let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer.buffer).offset(0).range(std::mem::size_of::<SkyboxUBO>() as u64);
-        let write_set = vk::WriteDescriptorSet::default()
-            .dst_set(descriptor_set).dst_binding(0).dst_array_element(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
+        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
-        let push_constant_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
-            .offset(0).size(std::mem::size_of::<SkyboxPushConstants>() as u32);
+        let push_constant_range = vk::PushConstantRange::default().stage_flags(vk::ShaderStageFlags::VERTEX).offset(0).size(std::mem::size_of::<SkyboxPushConstants>() as u32);
+        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout)).push_constant_ranges(std::slice::from_ref(&push_constant_range));
+        let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Failed to create skybox pipeline layout: {}", e))?;
 
-        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default()
-            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-            .push_constant_ranges(std::slice::from_ref(&push_constant_range));
-
-        let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }
-            .map_err(|e| anyhow!("Failed to create skybox pipeline layout: {}", e))?;
-
-        let vert_shader_code = Self::read_shader_file("src/vulkan_logic/compiled_shaders/skybox.vert.spv")?;
-        let frag_shader_code = Self::read_shader_file("src/vulkan_logic/compiled_shaders/skybox.frag.spv")?;
+        // USES CENTRALIZED SHADER PATHS
+        let vert_shader_code = Self::read_shader_file(paths::SKYBOX_VERT)?;
+        let frag_shader_code = Self::read_shader_file(paths::SKYBOX_FRAG)?;
 
         let vert_module = Self::create_shader_module(&context.device, &vert_shader_code)?;
         let frag_module = Self::create_shader_module(&context.device, &frag_shader_code)?;
@@ -87,15 +70,11 @@ impl SkyboxSystem {
         let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
         let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         
-        let rasterizer = vk::PipelineRasterizationStateCreateInfo::default()
-            .polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
-            
-        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
-            .depth_test_enable(false).depth_write_enable(false);
+        let rasterizer = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(false).depth_write_enable(false);
             
         let multisampling = vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
-        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A);
+        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A);
         let color_blending = vk::PipelineColorBlendStateCreateInfo::default().attachments(std::slice::from_ref(&color_blend_attachment));
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
@@ -104,8 +83,7 @@ impl SkyboxSystem {
             .depth_stencil_state(&depth_stencil).color_blend_state(&color_blending).dynamic_state(&dynamic_state)
             .layout(pipeline_layout).render_pass(render_pass).subpass(0);
 
-        let pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }
-            .map_err(|e| anyhow!("Failed to create skybox pipeline: {:?}", e.1))?[0];
+        let pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }.map_err(|e| anyhow!("Failed to create skybox pipeline: {:?}", e.1))?[0];
 
         unsafe {
             context.device.destroy_shader_module(vert_module, None);
@@ -115,14 +93,7 @@ impl SkyboxSystem {
         Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
     }
 
-    pub fn draw(
-        &mut self,
-        context: &VulkanContext,
-        command_buffer: vk::CommandBuffer,
-        extent: &vk::Extent2D,
-        config: &SkyboxConfig,
-        camera_view_matrix: glam::Mat4,
-    ) -> Result<()> {
+    pub fn draw(&mut self, context: &VulkanContext, command_buffer: vk::CommandBuffer, extent: &vk::Extent2D, config: &SkyboxConfig, camera_view_matrix: glam::Mat4) -> Result<()> {
         let allocator = match context.allocator.as_ref() {
             Some(alloc) => alloc,
             None => return Err(anyhow!("Memory allocator missing during skybox draw")),
@@ -132,11 +103,8 @@ impl SkyboxSystem {
             zenith_color: glam::Vec4::new(config.zenith_color[0], config.zenith_color[1], config.zenith_color[2], 1.0),
             horizon_color: glam::Vec4::new(config.horizon_color[0], config.horizon_color[1], config.horizon_color[2], 1.0),
             ground_color: glam::Vec4::new(config.ground_color[0], config.ground_color[1], config.ground_color[2], 1.0),
-            disc_count: 0,
-            crescent_count: 0,
-            _pad: [0; 2],
-            discs: [SkyboxDiscData::default(); 5],
-            crescents: [SkyboxCrescentData::default(); 5],
+            disc_count: 0, crescent_count: 0, _pad: [0; 2],
+            discs: [SkyboxDiscData::default(); 5], crescents: [SkyboxCrescentData::default(); 5],
         };
 
         for disc in &config.discs {
@@ -175,10 +143,8 @@ impl SkyboxSystem {
         unsafe {
             context.device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             context.device.cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
-            
             let pc_bytes = std::slice::from_raw_parts(&pc as *const _ as *const u8, std::mem::size_of::<SkyboxPushConstants>());
             context.device.cmd_push_constants(command_buffer, self.pipeline_layout, vk::ShaderStageFlags::VERTEX, 0, pc_bytes);
-            
             context.device.cmd_draw(command_buffer, 3, 1, 0, 0);
         }
 

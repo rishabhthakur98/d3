@@ -1,5 +1,4 @@
 // src/vulkan_logic/renderers/river_renderer.rs
-
 use anyhow::{anyhow, Result};
 use ash::vk;
 use std::ffi::CStr;
@@ -10,6 +9,8 @@ use glam::Quat;
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
 use crate::vulkan_logic::memory::vertex_setup::VertexSetup;
+use crate::vulkan_logic::config::paths; // FIXED IMPORT
+
 use crate::water::ubo::{RiverUBO, RiverData, RiverPushConstants};
 use crate::water::config::RiverConfig;
 use crate::water::river_mesh::RiverMesh;
@@ -34,7 +35,6 @@ impl RiverSystem {
             None => return Err(anyhow!("Memory allocator was not initialized")),
         };
 
-        // Generate a 1x1 base unit mesh. Scale is applied via PushConstants dynamically later!
         let mesh = RiverMesh::generate(1.0, 1.0, 100, 100, [1.0; 4]);
         let index_count = mesh.indices.len() as u32;
 
@@ -42,11 +42,9 @@ impl RiverSystem {
         let mut index_buffer = DynamicBuffer::new(allocator, std::mem::size_of_val(&mesh.indices[0]) * mesh.indices.len(), vk::BufferUsageFlags::INDEX_BUFFER)?;
         let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<RiverUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
 
-        // Upload geometry to the GPU buffers
         vertex_buffer.upload_data(allocator, &mesh.vertices)?; 
         index_buffer.upload_data(allocator, &mesh.indices)?;
 
-        // Set up bindings and descriptors
         let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("Failed to create layout: {}", e))?;
@@ -62,13 +60,13 @@ impl RiverSystem {
         let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
-        // Bind PushConstants to VERTEX and FRAGMENT to access the river_index array locator
         let pc_range = vk::PushConstantRange::default().stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT).offset(0).size(std::mem::size_of::<RiverPushConstants>() as u32);
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout)).push_constant_ranges(std::slice::from_ref(&pc_range));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Failed to create pipeline layout: {}", e))?;
 
-        let vert_code = Self::read_shader("src/vulkan_logic/compiled_shaders/river.vert.spv")?;
-        let frag_code = Self::read_shader("src/vulkan_logic/compiled_shaders/river.frag.spv")?;
+        // USES CENTRALIZED SHADER PATHS
+        let vert_code = Self::read_shader(paths::RIVER_VERT)?;
+        let frag_code = Self::read_shader(paths::RIVER_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
         let frag_mod = Self::create_module(&context.device, &frag_code)?;
         let entry = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
@@ -119,7 +117,6 @@ impl RiverSystem {
             None => return Err(anyhow!("Memory allocator missing during draw")),
         };
         
-        // If there are no rivers spawned, bypass rendering logic completely
         if rivers.is_empty() { return Ok(()); }
 
         let mut ubo = RiverUBO {
@@ -129,11 +126,9 @@ impl RiverSystem {
             river_count: 0, _pad: [0; 3], rivers: [RiverData::default(); 10],
         };
 
-        // Inject all active stream configurations securely into GPU memory array
         for (i, config) in rivers.iter().enumerate().take(10) {
             ubo.rivers[i] = RiverData {
-                deep_color: glam::Vec4::from_array(config.deep_color),
-                shallow_color: glam::Vec4::from_array(config.shallow_color),
+                deep_color: glam::Vec4::from_array(config.deep_color), shallow_color: glam::Vec4::from_array(config.shallow_color),
                 foam_color: glam::Vec4::from_array(config.foam_color),
                 sky_reflection_color: glam::Vec4::new(config.sky_reflection_color[0], config.sky_reflection_color[1], config.sky_reflection_color[2], config.foam_blend_strength),
                 params: glam::Vec4::new(time, config.flow_speed, config.wave_strength, 0.0),
@@ -149,7 +144,6 @@ impl RiverSystem {
             context.device.cmd_bind_index_buffer(cmd, self.index_buffer.buffer, 0, vk::IndexType::UINT32);
             context.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
             
-            // Generate multiple meshes dynamically through space projection loop!
             for (i, config) in rivers.iter().enumerate().take(10) {
                 let rot = Quat::from_euler(glam::EulerRot::XYZ, config.orientation.x, config.orientation.y, config.orientation.z);
                 let model = glam::Mat4::from_scale_rotation_translation(config.scale, rot, config.position);
@@ -165,11 +159,7 @@ impl RiverSystem {
 
     pub fn destroy(&mut self, context: &VulkanContext) {
         unsafe {
-            if let Some(a) = context.allocator.as_ref() { 
-                self.ubo_buffer.destroy(a); 
-                self.vertex_buffer.destroy(a); 
-                self.index_buffer.destroy(a); 
-            }
+            if let Some(a) = context.allocator.as_ref() { self.ubo_buffer.destroy(a); self.vertex_buffer.destroy(a); self.index_buffer.destroy(a); }
             context.device.destroy_descriptor_pool(self.descriptor_pool, None);
             context.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             context.device.destroy_pipeline(self.pipeline, None);
@@ -177,15 +167,6 @@ impl RiverSystem {
         }
     }
     
-    fn read_shader(p: &str) -> Result<Vec<u8>> { 
-        let mut f = File::open(p).map_err(|e| anyhow!("Missing shader {}: {}", p, e))?; 
-        let mut b = Vec::new(); 
-        f.read_to_end(&mut b).map_err(|e| anyhow!("Failed to read {}: {}", p, e))?; 
-        Ok(b) 
-    }
-    fn create_module(d: &ash::Device, c: &[u8]) -> Result<vk::ShaderModule> { 
-        let (p, code, s) = unsafe { c.align_to::<u32>() }; 
-        if !p.is_empty() || !s.is_empty() { return Err(anyhow!("Shader bytecode misaligned")); } 
-        unsafe { d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None) }.map_err(|e| anyhow!("Failed module creation: {}", e)) 
-    }
+    fn read_shader(p: &str) -> Result<Vec<u8>> { let mut f = File::open(p).map_err(|e| anyhow!("Missing shader {}: {}", p, e))?; let mut b = Vec::new(); f.read_to_end(&mut b).map_err(|e| anyhow!("Failed to read {}: {}", p, e))?; Ok(b) }
+    fn create_module(d: &ash::Device, c: &[u8]) -> Result<vk::ShaderModule> { let (p, code, s) = unsafe { c.align_to::<u32>() }; if !p.is_empty() || !s.is_empty() { return Err(anyhow!("Shader bytecode misaligned")); } unsafe { d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None) }.map_err(|e| anyhow!("Failed module creation: {}", e)) }
 }

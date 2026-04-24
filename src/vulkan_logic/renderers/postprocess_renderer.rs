@@ -1,5 +1,4 @@
 // src/vulkan_logic/renderers/postprocess_renderer.rs
-
 use anyhow::{anyhow, Result};
 use ash::vk;
 use std::ffi::CStr;
@@ -8,6 +7,8 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
+use crate::vulkan_logic::config::paths; // FIXED IMPORT
+
 use crate::postprocessing::ubo::PostProcessUBO;
 use crate::postprocessing::config::PostProcessConfig;
 use crate::vulkan_logic::passes::offscreen_pass::OffscreenPass; 
@@ -54,8 +55,9 @@ impl PostProcessSystem {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(&pipeline_layouts);
         system.pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Failed to create pipeline layout: {}", e))?;
 
-        let vert_code = Self::read_shader("src/vulkan_logic/compiled_shaders/postprocess.vert.spv")?;
-        let frag_code = Self::read_shader("src/vulkan_logic/compiled_shaders/postprocess.frag.spv")?;
+        // USES CENTRALIZED SHADER PATHS
+        let vert_code = Self::read_shader(paths::POSTPROCESS_VERT)?;
+        let frag_code = Self::read_shader(paths::POSTPROCESS_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
         let frag_mod = Self::create_module(&context.device, &frag_code)?;
         let entry = unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") };
@@ -80,13 +82,10 @@ impl PostProcessSystem {
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_stages).vertex_input_state(&vertex_input).input_assembly_state(&assembly).viewport_state(&viewport).rasterization_state(&rasterizer)
-            .multisample_state(&multisampling)
-            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blending)
-            .dynamic_state(&dynamic_state_info)
+            .multisample_state(&multisampling).depth_stencil_state(&depth_stencil).color_blend_state(&color_blending).dynamic_state(&dynamic_state_info)
             .layout(system.pipeline_layout).render_pass(swapchain_render_pass).subpass(0);
 
-        let pipeline_infos = [pipeline_info];
-        system.pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_infos, None) }.map_err(|e| anyhow!("Postprocess pipeline creation failed: {:?}", e.1))?[0];
+        system.pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }.map_err(|e| anyhow!("Postprocess pipeline creation failed: {:?}", e.1))?[0];
 
         unsafe { context.device.destroy_shader_module(vert_mod, None); context.device.destroy_shader_module(frag_mod, None); }
         Ok(system)
@@ -123,8 +122,7 @@ impl PostProcessSystem {
             _pad: [0.0; 3],
         };
         
-        let ubos = [ubo];
-        self.ubo_buffer.upload_data(allocator, &ubos)?;
+        self.ubo_buffer.upload_data(allocator, &[ubo])?;
 
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
