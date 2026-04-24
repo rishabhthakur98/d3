@@ -1,5 +1,6 @@
 // src/weather/ubo.rs
 use glam::{Vec4, Mat4};
+use super::config::MAX_WEATHER_PARTICLES;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -24,5 +25,5 @@ pub struct WeatherUBO {
     pub camera_up: Vec4,      
     pub particle_count: u32,
     pub _pad: [u32; 3], 
-    pub particles: [WeatherParticleData; 3000], // Massive swarm sent to GPU safely
+    pub particles: [WeatherParticleData; MAX_WEATHER_PARTICLES], 
 }

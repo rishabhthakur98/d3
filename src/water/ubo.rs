@@ -1,5 +1,6 @@
 // src/water/ubo.rs
 use glam::{Vec4, Mat4};
+use super::config::MAX_RIVERS;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -31,7 +32,7 @@ pub struct RiverUBO {
     pub light_color: Vec4,    
     pub river_count: u32,
     pub _pad: [u32; 3],
-    pub rivers: [RiverData; 10], 
+    pub rivers: [RiverData; MAX_RIVERS], 
 }
 
 #[repr(C)]

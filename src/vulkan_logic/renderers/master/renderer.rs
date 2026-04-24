@@ -1,4 +1,5 @@
 // src/vulkan_logic/renderers/master/renderer.rs
+
 use anyhow::{anyhow, Result};
 use ash::vk;
 use egui_ash_renderer::Renderer as EguiRenderer;
@@ -6,6 +7,7 @@ use egui_ash_renderer::Options as EguiOptions;
 use winit::window::Window;
 use std::sync::Arc;
 
+// Ensures isolated logical encapsulation of GPU logic 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::core::swapchain::SwapchainManager; 
 use crate::vulkan_logic::core::sync_objects::SyncObjects;
@@ -21,8 +23,8 @@ use crate::vulkan_logic::renderers::cloud_renderer::CloudSystem;
 use crate::vulkan_logic::renderers::fire_renderer::FireSystem;
 use crate::vulkan_logic::renderers::weather_renderer::WeatherSystem;
 
-use crate::postprocessing::offscreen::OffscreenPass;
-use crate::postprocessing::system::PostProcessSystem;
+use crate::vulkan_logic::passes::offscreen_pass::OffscreenPass;
+use crate::vulkan_logic::renderers::postprocess_renderer::PostProcessSystem;
 
 #[derive(Clone, Debug)]
 pub(crate) struct DrawCall {
@@ -67,7 +69,7 @@ impl MasterRenderer {
         let egui_renderer = EguiRenderer::with_default_allocator(
             &context.instance, context.physical_device, context.device.clone(), swapchain_mgr.render_pass,
             EguiOptions { srgb_framebuffer: false, ..Default::default() },
-        ).map_err(|e| anyhow!("Failed to init egui: {}", e))?;
+        ).map_err(|e| anyhow!("Failed to initialize egui rendering context: {}", e))?;
 
         let shadow_pass = ShadowPass::new(&context)?;
         let offscreen_pass = OffscreenPass::new(&context, swapchain_mgr.extent)?;
@@ -82,7 +84,7 @@ impl MasterRenderer {
         
         let post_process_system = PostProcessSystem::new(&context, swapchain_mgr.render_pass, &offscreen_pass)?;
         
-        let allocator = context.allocator.as_ref().unwrap();
+        let allocator = context.allocator.as_ref().ok_or_else(|| anyhow!("Memory allocator was dropped prior to renderer initialization"))?;
 
         let vertex_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<crate::assets::model::Vertex>() * 10000, vk::BufferUsageFlags::VERTEX_BUFFER)?;
         let index_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<u32>() * 10000, vk::BufferUsageFlags::INDEX_BUFFER)?;
@@ -91,8 +93,13 @@ impl MasterRenderer {
             vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1),
             vk::DescriptorPoolSize::default().ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1),
         ];
-        let descriptor_pool = unsafe { context.device.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1), None) }.unwrap();
-        let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&pipeline.descriptor_set_layout))) }.unwrap()[0];
+        
+        let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
+        let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("Failed to create global descriptor pool: {}", e))?;
+        
+        let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&pipeline.descriptor_set_layout));
+        let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("Global descriptor allocation fault: {}", e))?[0];
+        
         let uniform_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<LightUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
 
         let uniform_buffer_info = vk::DescriptorBufferInfo::default().buffer(uniform_buffer.buffer).offset(0).range(std::mem::size_of::<LightUBO>() as u64);
@@ -113,6 +120,7 @@ impl MasterRenderer {
 impl Drop for MasterRenderer {
     fn drop(&mut self) {
         unsafe {
+            // Guarantee all operations finish prior to sequential teardown
             let _ = self.context.device.device_wait_idle();
             if let Some(allocator) = self.context.allocator.as_ref() {
                 self.vertex_buffer.destroy(allocator);

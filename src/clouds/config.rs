@@ -1,19 +1,19 @@
 // src/clouds/config.rs
 use glam::Vec3;
 
-/// A localized, 3D bounding box filled with volumetric clouds.
-/// Completely decoupled from global space so you can have low foggy clouds over a swamp
-/// and high fluffy clouds over a mountain in the same map!
+// The maximum number of localized cloud bounding boxes allowed on screen.
+pub const MAX_CLOUD_VOLUMES: usize = 10;
+
 #[derive(Clone, Debug)]
 pub struct CloudVolume {
     pub min_bounds: Vec3,
     pub max_bounds: Vec3,
     pub base_color: [f32; 3],
     pub highlight_color: [f32; 3],
-    pub cloud_coverage: f32,    // 0.0 = clear sky, 1.0 = overcast
-    pub cloud_density: f32,     // How thick/dark the clouds are
-    pub wind_speed: f32,        // Speed of clouds moving across the sky
-    pub wind_direction: Vec3,   // Which way the wind blows
+    pub cloud_coverage: f32,    
+    pub cloud_density: f32,     
+    pub wind_speed: f32,        
+    pub wind_direction: Vec3,   
 }
 
 impl CloudVolume {

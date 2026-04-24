@@ -1,4 +1,8 @@
+// src/vulkan_logic/shader_files/fire.vert
 #version 450
+
+// Constants pulled in from centralized definitions instead of hardcoded magic numbers
+#define MAX_FIRE_PARTICLES 500
 
 struct FireParticleData {
     vec4 position; // w = scale
@@ -11,7 +15,7 @@ layout(set = 0, binding = 0) uniform FireUBO {
     vec4 camera_up;
     uint particle_count;
     uint pad1, pad2, pad3;
-    FireParticleData particles[500];
+    FireParticleData particles[MAX_FIRE_PARTICLES];
 } ubo;
 
 layout(location = 0) out vec2 fragUV;

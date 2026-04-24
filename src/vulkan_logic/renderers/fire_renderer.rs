@@ -10,6 +10,7 @@ use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
 use crate::fire::ubo::{FireUBO, FireParticleData};
 use crate::fire::emitter::FireEmitter;
+use crate::fire::config::MAX_FIRE_PARTICLES;
 
 pub struct FireSystem {
     pub pipeline_layout: vk::PipelineLayout,
@@ -57,14 +58,12 @@ impl FireSystem {
         let assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let viewport = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
-        
         let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(true).depth_write_enable(false).depth_compare_op(vk::CompareOp::LESS);
         
-        // CRITICAL AAA DIFFERENCE: Fire uses ADDITIVE blending, not Alpha blending!
         let blend_attachment = vk::PipelineColorBlendAttachmentState::default().color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
             .blend_enable(true)
             .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
-            .dst_color_blend_factor(vk::BlendFactor::ONE) // Additive magic!
+            .dst_color_blend_factor(vk::BlendFactor::ONE) 
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
@@ -115,13 +114,13 @@ impl FireSystem {
             camera_up: inv_view.y_axis,
             particle_count: 0,
             _pad: [0; 3],
-            particles: [FireParticleData::default(); 500],
+            particles: [FireParticleData::default(); MAX_FIRE_PARTICLES],
         };
 
-        // Merge particles seamlessly from ALL active world nodes into the unified UBO
         for emitter in emitters {
             for p in &emitter.particles {
-                if ubo.particle_count < 500 {
+                // Limit usage to exactly the globally configured max limits safely
+                if ubo.particle_count < MAX_FIRE_PARTICLES as u32 {
                     ubo.particles[ubo.particle_count as usize] = FireParticleData {
                         position: glam::Vec4::new(p.position.x, p.position.y, p.position.z, p.scale),
                         color: glam::Vec4::new(p.color[0], p.color[1], p.color[2], p.alpha),

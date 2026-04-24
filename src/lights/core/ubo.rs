@@ -1,6 +1,7 @@
 // src/lights/core/ubo.rs
 
 use glam::Vec4;
+use super::config::{MAX_GLOBAL_LIGHTS, MAX_SPOT_LIGHTS, MAX_POINT_LIGHTS, MAX_FOG_VOLUMES};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -43,18 +44,16 @@ impl Default for FogVolumeData { fn default() -> Self { Self { min_bounds: Vec4:
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LightUBO {
-    pub ambient_color: Vec4, // xyz: Color, w: Intensity
-    pub camera_pos: Vec4,    // xyz: Position, w: Padding
+    pub ambient_color: Vec4, 
+    pub camera_pos: Vec4,    
     
     pub global_count: u32,
     pub spot_count: u32,
     pub point_count: u32,          
-    pub fog_count: u32,      // Replaced old padding to store fog iteration limit perfectly
+    pub fog_count: u32,      
     
-    pub global_lights: [GlobalLightData; 4],   
-    pub spot_lights: [SpotLightData; 100],     
-    pub point_lights: [PointLightData; 100],   
-    
-    // NEW: Support for 10 simultaneous localized fog volumes
-    pub fog_volumes: [FogVolumeData; 10],      
+    pub global_lights: [GlobalLightData; MAX_GLOBAL_LIGHTS],   
+    pub spot_lights: [SpotLightData; MAX_SPOT_LIGHTS],     
+    pub point_lights: [PointLightData; MAX_POINT_LIGHTS],   
+    pub fog_volumes: [FogVolumeData; MAX_FOG_VOLUMES],      
 }

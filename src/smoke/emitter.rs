@@ -1,5 +1,5 @@
 // src/smoke/emitter.rs
-use super::config::SmokeConfig;
+use super::config::{SmokeConfig, MAX_SMOKE_PARTICLES};
 use glam::Vec3;
 
 #[derive(Clone, Debug)]
@@ -12,8 +12,6 @@ pub struct Particle {
     pub alpha: f32,
 }
 
-// A zero-dependency pseudo-random number generator for particle velocity
-// Added Clone and Debug derives to allow the parent SmokeEmitter to be cloned
 #[derive(Clone, Debug)] 
 struct Lcg { state: u32 }
 
@@ -25,8 +23,6 @@ impl Lcg {
     }
 }
 
-/// The CPU simulation that calculates particle physics every frame
-/// Added Clone derive so the WorldStreamer can hand off arrays safely to the Renderer
 #[derive(Clone)] 
 pub struct SmokeEmitter {
     pub config: SmokeConfig,
@@ -47,24 +43,20 @@ impl SmokeEmitter {
             p.life -= dt;
             let progress = 1.0 - (p.life / p.max_life).clamp(0.0, 1.0);
             
-            // Smoke expands over time
             p.scale = self.config.start_scale + (self.config.end_scale - self.config.start_scale) * progress;
-            
-            // Fade in quickly, fade out slowly
             p.alpha = if progress < 0.1 { progress * 10.0 } else { 1.0 - progress };
         }
         
-        // Remove dead particles
         self.particles.retain(|p| p.life > 0.0);
 
-        // 2. Spawn new particles based on spawn rate
+        // 2. Spawn new particles based on dynamically imported configuration bounds
         if self.config.spawn_rate > 0.0 {
             self.accumulator += dt;
             let spawn_interval = 1.0 / self.config.spawn_rate;
 
             while self.accumulator > spawn_interval {
                 self.accumulator -= spawn_interval;
-                if self.particles.len() < 500 { // Max 500 to fit safely in UBO bounds
+                if self.particles.len() < MAX_SMOKE_PARTICLES { 
                     let vx = (self.rng.next_f32() - 0.5) * self.config.spread;
                     let vz = (self.rng.next_f32() - 0.5) * self.config.spread;
                     

@@ -1,16 +1,19 @@
 // src/smoke/config.rs
 use glam::Vec3;
 
+// The strict GPU array limit for billboarding smoke particles.
+pub const MAX_SMOKE_PARTICLES: usize = 500;
+
 #[derive(Clone, Debug)]
 pub struct SmokeConfig {
     pub position: Vec3,
     pub color: [f32; 3],
-    pub spawn_rate: f32,        // How many particles spawn per second
-    pub particle_lifetime: f32, // How long they live before vanishing
-    pub start_scale: f32,       // Size when spawned
-    pub end_scale: f32,         // Size when they vanish (smoke expands!)
-    pub rise_speed: f32,        // How fast it floats up
-    pub spread: f32,            // How wide the smoke plume gets
+    pub spawn_rate: f32,        
+    pub particle_lifetime: f32, 
+    pub start_scale: f32,       
+    pub end_scale: f32,         
+    pub rise_speed: f32,        
+    pub spread: f32,            
 }
 
 impl Default for SmokeConfig {

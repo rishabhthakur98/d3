@@ -1,6 +1,9 @@
 // src/weather/config.rs
 use glam::Vec3;
 
+// The maximum number of rain drops or snowflakes allowed on the GPU simultaneously.
+pub const MAX_WEATHER_PARTICLES: usize = 3000;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WeatherType {
     None,
@@ -11,12 +14,12 @@ pub enum WeatherType {
 #[derive(Clone, Debug)]
 pub struct WeatherConfig {
     pub weather_type: WeatherType,
-    pub particle_count: usize, // Number of particles in the box
-    pub box_size: Vec3,        // The dimensions of the invisible box around the camera
-    pub fall_speed: f32,       // Base downward velocity
-    pub wind_velocity: Vec3,   // Pushes the weather sideways
-    pub particle_scale: f32,   // Size of the rain drops or snowflakes
-    pub color: [f32; 4],       // Color and transparency
+    pub particle_count: usize, 
+    pub box_size: Vec3,        
+    pub fall_speed: f32,       
+    pub wind_velocity: Vec3,   
+    pub particle_scale: f32,   
+    pub color: [f32; 4],       
 }
 
 impl Default for WeatherConfig {
@@ -24,7 +27,7 @@ impl Default for WeatherConfig {
         Self {
             weather_type: WeatherType::None,
             particle_count: 2000, 
-            box_size: Vec3::new(40.0, 40.0, 40.0), // 40-meter cube around the camera
+            box_size: Vec3::new(40.0, 40.0, 40.0), 
             fall_speed: 0.0,
             wind_velocity: Vec3::ZERO,
             particle_scale: 1.0,

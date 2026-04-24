@@ -1,7 +1,7 @@
 // src/skybox/ubo.rs
 
 use glam::{Vec4, Mat4};
-
+use super::config::{MAX_SKYBOX_DISCS, MAX_SKYBOX_CRESCENTS};
 /// Maps directly to the GLSL SkyboxDisc struct
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -39,11 +39,10 @@ pub struct SkyboxUBO {
     pub crescent_count: u32,
     pub _pad: [u32; 2],
     
-    pub discs: [SkyboxDiscData; 5],        // Supports up to 5 Suns/Stars
-    pub crescents: [SkyboxCrescentData; 5], // Supports up to 5 Moons
+    pub discs: [SkyboxDiscData; MAX_SKYBOX_DISCS],        
+    pub crescents: [SkyboxCrescentData; MAX_SKYBOX_CRESCENTS], 
 }
 
-/// Push constants reconstruct the view rays from the screen pixels
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SkyboxPushConstants {

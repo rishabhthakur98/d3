@@ -1,11 +1,14 @@
 // src/water/config.rs
 use glam::Vec3;
 
+// The maximum number of dynamic rivers allowed to be sent to the GPU in a single draw batch.
+pub const MAX_RIVERS: usize = 10;
+
 #[derive(Clone, Debug)]
 pub struct RiverConfig {
     pub position: Vec3,
-    pub orientation: Vec3, // Pitch, Yaw, Roll
-    pub scale: Vec3,       // x = width, z = length
+    pub orientation: Vec3, 
+    pub scale: Vec3,       
     
     pub deep_color: [f32; 4],
     pub shallow_color: [f32; 4],
@@ -27,7 +30,7 @@ impl Default for RiverConfig {
         Self {
             position: Vec3::ZERO,
             orientation: Vec3::ZERO,
-            scale: Vec3::new(40.0, 1.0, 200.0), // 40m wide, 200m long
+            scale: Vec3::new(40.0, 1.0, 200.0), 
 
             deep_color: [0.02, 0.15, 0.3, 0.95],
             shallow_color: [0.1, 0.4, 0.5, 0.7],

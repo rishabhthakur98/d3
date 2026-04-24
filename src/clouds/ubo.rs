@@ -1,5 +1,6 @@
 // src/clouds/ubo.rs
 use glam::{Vec4, Mat4};
+use super::config::MAX_CLOUD_VOLUMES;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -22,12 +23,12 @@ impl Default for CloudVolumeData {
 pub struct CloudUBO {
     pub inv_view_proj: Mat4,  
     pub camera_pos: Vec4,
-    pub sun_dir: Vec4,        // xyz: Direction, w: Intensity
-    pub sun_color: Vec4,      // xyz: Color, w: Padding
+    pub sun_dir: Vec4,        
+    pub sun_color: Vec4,      
     
     pub time: f32,
     pub cloud_count: u32,
     pub _pad: [u32; 2],
     
-    pub clouds: [CloudVolumeData; 10], // Supports up to 10 localized volumetric cloud boxes at once
+    pub clouds: [CloudVolumeData; MAX_CLOUD_VOLUMES], 
 }

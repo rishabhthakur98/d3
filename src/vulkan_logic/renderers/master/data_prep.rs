@@ -9,6 +9,7 @@ use crate::lights::spawnable::spot::SpotLight;
 use crate::lights::spawnable::point::PointLight;
 use crate::lights::core::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData, FogVolumeData};
 use crate::volumetrics::fog_config::FogVolume;
+use crate::lights::core::config::{MAX_GLOBAL_LIGHTS, MAX_SPOT_LIGHTS, MAX_POINT_LIGHTS, MAX_FOG_VOLUMES};
 
 pub(crate) struct FrameData {
     pub draw_calls: Vec<DrawCall>,
@@ -50,16 +51,16 @@ impl MasterRenderer {
                 point_count: 0,
                 fog_count: 0,
                 
-                global_lights: [GlobalLightData::default(); 4],
-                spot_lights: [SpotLightData::default(); 100],
-                point_lights: [PointLightData::default(); 100],
-                fog_volumes: [FogVolumeData::default(); 10],
+                global_lights: [GlobalLightData::default(); MAX_GLOBAL_LIGHTS],
+                spot_lights: [SpotLightData::default(); MAX_SPOT_LIGHTS],
+                point_lights: [PointLightData::default(); MAX_POINT_LIGHTS],
+                fog_volumes: [FogVolumeData::default(); MAX_FOG_VOLUMES],
             };
 
             let mut shadow_caster_dir = None;
 
             for gl in global_lights {
-                if ubo.global_count < 4 {
+                if ubo.global_count < MAX_GLOBAL_LIGHTS as u32 {
                     let idx = ubo.global_count as usize;
                     ubo.global_lights[idx] = GlobalLightData {
                         direction: glam::Vec4::new(gl.direction.x, gl.direction.y, gl.direction.z, gl.intensity),
@@ -101,7 +102,7 @@ impl MasterRenderer {
             }
 
             for spot in spot_lights {
-                if ubo.spot_count < 100 {
+                if ubo.spot_count < MAX_SPOT_LIGHTS as u32 {
                     let idx = ubo.spot_count as usize;
                     ubo.spot_lights[idx] = SpotLightData {
                         position: glam::Vec4::new(spot.position.x, spot.position.y, spot.position.z, spot.range),
@@ -114,7 +115,7 @@ impl MasterRenderer {
             }
 
             for point in point_lights {
-                if ubo.point_count < 100 {
+                if ubo.point_count < MAX_POINT_LIGHTS as u32 {
                     let idx = ubo.point_count as usize;
                     ubo.point_lights[idx] = PointLightData {
                         position: glam::Vec4::new(point.position.x, point.position.y, point.position.z, point.range),
@@ -124,9 +125,8 @@ impl MasterRenderer {
                 }
             }
 
-            // Fill array bounds
             for fog in fog_volumes {
-                if ubo.fog_count < 10 {
+                if ubo.fog_count < MAX_FOG_VOLUMES as u32 {
                     let idx = ubo.fog_count as usize;
                     ubo.fog_volumes[idx] = FogVolumeData {
                         min_bounds: glam::Vec4::new(fog.min_bounds.x, fog.min_bounds.y, fog.min_bounds.z, 0.0),

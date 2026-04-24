@@ -1,5 +1,6 @@
 // src/smoke/ubo.rs
 use glam::{Vec4, Mat4};
+use super::config::MAX_SMOKE_PARTICLES;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -16,9 +17,9 @@ impl Default for ParticleData {
 #[derive(Clone, Copy, Debug)]
 pub struct SmokeUBO {
     pub view_proj: Mat4,
-    pub camera_right: Vec4, // Used by GPU to forcefully rotate particles to face camera
+    pub camera_right: Vec4, 
     pub camera_up: Vec4,
     pub particle_count: u32,
     pub _pad: [u32; 3], 
-    pub particles: [ParticleData; 500], // The entire swarm sent in one tight package
+    pub particles: [ParticleData; MAX_SMOKE_PARTICLES], 
 }

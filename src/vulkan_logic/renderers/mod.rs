@@ -7,3 +7,4 @@ pub mod smoke_renderer;
 pub mod cloud_renderer;
 pub mod fire_renderer;
 pub mod weather_renderer;
+pub mod postprocess_renderer;

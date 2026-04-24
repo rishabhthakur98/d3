@@ -1,5 +1,6 @@
 // src/fire/ubo.rs
 use glam::{Vec4, Mat4};
+use super::config::MAX_FIRE_PARTICLES;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -20,5 +21,7 @@ pub struct FireUBO {
     pub camera_up: Vec4,
     pub particle_count: u32,
     pub _pad: [u32; 3], 
-    pub particles: [FireParticleData; 500], 
+    
+    // Safely uses the single source of truth for array bounds limits
+    pub particles: [FireParticleData; MAX_FIRE_PARTICLES], 
 }
