@@ -1,6 +1,6 @@
 // src/water/river_mesh.rs
 
-use crate::assets::model::{Mesh, Vertex};
+use crate::assets::model::{Mesh, Vertex, MaterialConfig};
 
 pub struct RiverMesh;
 
@@ -43,6 +43,11 @@ impl RiverMesh {
             }
         }
 
-        Mesh { vertices, indices }
+        Mesh { 
+            vertices, 
+            indices,
+            // Supply the new required material field with a safe default
+            material: MaterialConfig::default() 
+        }
     }
 }
