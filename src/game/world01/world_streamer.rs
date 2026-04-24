@@ -147,7 +147,7 @@ impl WorldStreamer {
             rivers: vec![RiverConfig { position: Vec3::new(0.0, -1.5, 0.0), ..Default::default() }],
             smoke_emitters: vec![SmokeEmitter::new(SmokeConfig { position: Vec3::new(5.0, 4.0, -5.0), ..Default::default() })],
             fire_emitters: vec![FireEmitter::new(FireConfig { position: Vec3::new(-2.0, -1.0, 3.0), ..Default::default() })],
-            weather_emitters: vec![WeatherEmitter::new(WeatherConfig::heavy_rain())],
+            weather_emitters: vec![WeatherEmitter::new(WeatherConfig::default())],
             
             fog_volumes: vec![FogVolume::new(Vec3::new(-50.0, -10.0, -50.0), Vec3::new(50.0, 20.0, 50.0), [0.6, 0.7, 0.8], 0.025)],
             

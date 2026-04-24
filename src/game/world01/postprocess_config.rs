@@ -4,7 +4,7 @@ use crate::postprocessing::config::PostProcessConfig;
 
 pub fn get_postprocess_config() -> PostProcessConfig {
     PostProcessConfig {
-        enabled: true, 
+        enabled: false, 
         
         // 1. EXPOSURE: Bring this down. 
         // 1.2 was adding 20% artificial brightness to everything. 1.0 is neutral. 
