@@ -3,5 +3,5 @@
 // Expose the configuration structures
 pub mod config;
 
-// Expose the uniform buffer object data structures
-pub mod ubo;
+// Expose the shader storage buffer object data structures
+pub mod ssbo;

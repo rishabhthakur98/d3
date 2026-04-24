@@ -1,4 +1,4 @@
-// src/clouds/ubo.rs
+// src/clouds/ssbo.rs
 use glam::{Vec4, Mat4};
 use super::config::MAX_CLOUD_VOLUMES;
 
@@ -20,7 +20,7 @@ impl Default for CloudVolumeData {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct CloudUBO {
+pub struct CloudSSBO {
     pub inv_view_proj: Mat4,  
     pub camera_pos: Vec4,
     pub sun_dir: Vec4,        

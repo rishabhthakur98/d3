@@ -7,9 +7,9 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
-use crate::vulkan_logic::config::paths; // FIXED IMPORT
+use crate::vulkan_logic::config::paths; 
 
-use crate::clouds::ubo::{CloudUBO, CloudVolumeData};
+use crate::clouds::ssbo::{CloudSSBO, CloudVolumeData};
 use crate::clouds::config::CloudVolume;
 
 pub struct CloudSystem {
@@ -18,34 +18,33 @@ pub struct CloudSystem {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
-    pub ubo_buffer: DynamicBuffer,
+    pub ssbo_buffer: DynamicBuffer,
 }
 
 impl CloudSystem {
     pub fn new(context: &VulkanContext, render_pass: vk::RenderPass) -> Result<Self> {
         let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
 
-        let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<CloudUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        let ssbo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<CloudSSBO>(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
+        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
-        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
+        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
         let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("{}", e))?[0];
 
-        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer.buffer).offset(0).range(std::mem::size_of::<CloudUBO>() as u64);
-        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
+        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ssbo_buffer.buffer).offset(0).range(std::mem::size_of::<CloudSSBO>() as u64);
+        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
-        // USES CENTRALIZED SHADER PATHS
         let vert_code = Self::read_shader(paths::CLOUD_VERT)?;
         let frag_code = Self::read_shader(paths::CLOUD_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
@@ -83,7 +82,7 @@ impl CloudSystem {
 
         unsafe { context.device.destroy_shader_module(vert_mod, None); context.device.destroy_shader_module(frag_mod, None); }
 
-        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
+        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ssbo_buffer })
     }
 
     pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, clouds: &[CloudVolume], inv_view_proj: glam::Mat4, cam_pos: glam::Vec3, sun_dir: glam::Vec3, sun_color: [f32; 3], intensity: f32, time: f32) -> Result<()> {
@@ -91,28 +90,28 @@ impl CloudSystem {
 
         if clouds.is_empty() { return Ok(()); }
 
-        let mut ubo = CloudUBO {
+        let mut ssbo = CloudSSBO {
             inv_view_proj, camera_pos: glam::Vec4::new(cam_pos.x, cam_pos.y, cam_pos.z, 1.0),
             sun_dir: glam::Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, intensity),
             sun_color: glam::Vec4::new(sun_color[0], sun_color[1], sun_color[2], 1.0),
-            time, cloud_count: 0, _pad: [0; 2], clouds: [CloudVolumeData::default(); 10],
+            time, cloud_count: 0, _pad: [0; 2], clouds: [CloudVolumeData::default(); crate::clouds::config::MAX_CLOUD_VOLUMES],
         };
 
         for cloud in clouds {
-            if ubo.cloud_count < 10 {
-                let idx = ubo.cloud_count as usize;
-                ubo.clouds[idx] = CloudVolumeData {
+            if ssbo.cloud_count < crate::clouds::config::MAX_CLOUD_VOLUMES as u32 {
+                let idx = ssbo.cloud_count as usize;
+                ssbo.clouds[idx] = CloudVolumeData {
                     min_bounds: glam::Vec4::new(cloud.min_bounds.x, cloud.min_bounds.y, cloud.min_bounds.z, cloud.cloud_coverage),
                     max_bounds: glam::Vec4::new(cloud.max_bounds.x, cloud.max_bounds.y, cloud.max_bounds.z, cloud.cloud_density),
                     base_color: glam::Vec4::new(cloud.base_color[0], cloud.base_color[1], cloud.base_color[2], cloud.wind_speed),
                     highlight_color: glam::Vec4::new(cloud.highlight_color[0], cloud.highlight_color[1], cloud.highlight_color[2], 0.0),
                     wind_dir: glam::Vec4::new(cloud.wind_direction.x, cloud.wind_direction.y, cloud.wind_direction.z, 0.0),
                 };
-                ubo.cloud_count += 1;
+                ssbo.cloud_count += 1;
             }
         }
 
-        self.ubo_buffer.upload_data(allocator, &[ubo])?;
+        self.ssbo_buffer.upload_data(allocator, &[ssbo])?;
 
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
@@ -124,7 +123,7 @@ impl CloudSystem {
 
     pub fn destroy(&mut self, context: &VulkanContext) {
         unsafe {
-            if let Some(a) = context.allocator.as_ref() { self.ubo_buffer.destroy(a); }
+            if let Some(a) = context.allocator.as_ref() { self.ssbo_buffer.destroy(a); }
             context.device.destroy_descriptor_pool(self.descriptor_pool, None);
             context.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             context.device.destroy_pipeline(self.pipeline, None);

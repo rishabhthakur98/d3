@@ -1,4 +1,4 @@
-// src/water/ubo.rs
+// src/water/ssbo.rs
 use glam::{Vec4, Mat4};
 use super::config::MAX_RIVERS;
 
@@ -22,10 +22,9 @@ impl Default for RiverData {
     }
 }
 
-/// Upgraded to hold up to 10 dynamically spawned rivers in a single frame
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct RiverUBO {
+pub struct RiverSSBO {
     pub view_proj: Mat4,
     pub camera_pos: Vec4,     
     pub light_dir: Vec4,      

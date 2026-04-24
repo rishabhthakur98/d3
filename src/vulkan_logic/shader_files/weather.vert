@@ -1,52 +1,49 @@
 // src/vulkan_logic/shader_files/weather.vert
 #version 450
 
-struct WeatherParticleData {
-    vec4 position; // w = random seed
-    vec4 color;
-    vec4 params;   // x: scale, y: fall_speed, z: is_rain, w: time
+layout(location = 0) out vec2 fragUV;
+layout(location = 1) out vec4 fragColor;
+
+struct ParticleData {
+    vec4 position; // xyz: local position, w: random seed
+    vec4 color;    // xyz: color, w: alpha
+    vec4 params;   // x: Scale, y: Fall Speed, z: Is Rain (1.0 or 0.0), w: Time
 };
 
-layout(set = 0, binding = 0) uniform WeatherUBO {
+// PHASE 3 FIX: Remove hardcoded size limit, use unbounded array
+layout(std430, binding = 0) buffer WeatherSSBO {
     mat4 view_proj;
     vec4 camera_pos;     
     vec4 camera_right;   
-    vec4 camera_up;
+    vec4 camera_up;      
     uint particle_count;
-    uint pad1, pad2, pad3;
-    WeatherParticleData particles[3000]; 
-} ubo;
-
-layout(location = 0) out vec2 fragUV;
-layout(location = 1) out vec4 fragColor;
-layout(location = 2) out float fragIsRain;
-
-const vec2 quad[6] = vec2[](
-    vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5),
-    vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5)
-);
+    uint _pad[3]; 
+    ParticleData particles[]; 
+} weather;
 
 void main() {
-    WeatherParticleData p = ubo.particles[gl_InstanceIndex];
-    vec2 v = quad[gl_VertexIndex];
-
-    vec3 localPos = p.position.xyz;
-    if (p.params.z < 0.5) { // Is Snow, apply flutter
-        float flutter = sin(p.params.w * 2.0 + p.position.w) * 0.5;
-        localPos.x += flutter;
-    }
-
-    vec3 worldPos = ubo.camera_pos.xyz + localPos;
-    if (p.params.z > 0.5) { // Is Rain, stretch drop by velocity
-        worldPos += ubo.camera_right.xyz * v.x * p.params.x;
-        worldPos += vec3(0.0, 1.0, 0.0) * v.y * p.params.x * (p.params.y * 0.25);
-    } else { // Snow, standard billboard
-        worldPos += ubo.camera_right.xyz * v.x * p.params.x;
-        worldPos += ubo.camera_up.xyz * v.y * p.params.x;
-    }
-
-    gl_Position = ubo.view_proj * vec4(worldPos, 1.0);
-    fragUV = v + 0.5;
+    ParticleData p = weather.particles[gl_InstanceIndex];
+    
+    // Basic quad rendering logic
+    vec2 uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    fragUV = uv;
     fragColor = p.color;
-    fragIsRain = p.params.z;
+
+    // Procedural falling logic based on time
+    float time = p.params.w;
+    float fallSpeed = p.params.y;
+    vec3 localPos = p.position.xyz;
+    
+    // Wrap around logic
+    localPos.y = mod(localPos.y - (time * fallSpeed) + p.position.w, 100.0) - 50.0;
+    
+    // Billboard offset
+    vec2 offset = uv * 2.0 - 1.0;
+    float scale = p.params.x;
+    
+    vec3 worldPos = weather.camera_pos.xyz + localPos 
+        + weather.camera_right.xyz * offset.x * scale 
+        + weather.camera_up.xyz * offset.y * scale;
+
+    gl_Position = weather.view_proj * vec4(worldPos, 1.0);
 }

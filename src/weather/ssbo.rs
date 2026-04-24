@@ -1,4 +1,4 @@
-// src/weather/ubo.rs
+// src/weather/ssbo.rs
 use glam::{Vec4, Mat4};
 use super::config::MAX_WEATHER_PARTICLES;
 
@@ -18,12 +18,14 @@ impl Default for WeatherParticleData {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct WeatherUBO {
+pub struct WeatherSSBO {
     pub view_proj: Mat4,
     pub camera_pos: Vec4,     
     pub camera_right: Vec4,   
     pub camera_up: Vec4,      
     pub particle_count: u32,
     pub _pad: [u32; 3], 
+    // The GPU shader will treat this as an unbounded array `[]`, but Rust 
+    // requires a fixed size to allocate the backing memory buffer safely.
     pub particles: [WeatherParticleData; MAX_WEATHER_PARTICLES], 
 }

@@ -7,7 +7,8 @@ use crate::assets::model::Model;
 use crate::lights::global::directional::GlobalLight;
 use crate::lights::spawnable::spot::SpotLight;
 use crate::lights::spawnable::point::PointLight;
-use crate::lights::core::ubo::{LightUBO, SpotLightData, GlobalLightData, PointLightData, FogVolumeData};
+// PHASE 2 FIX: Migrate data prep to push to the new SSBO structs
+use crate::lights::core::ssbo::{LightSSBO, SpotLightData, GlobalLightData, PointLightData, FogVolumeData};
 use crate::volumetrics::fog_config::FogVolume;
 use crate::lights::core::config::{MAX_GLOBAL_LIGHTS, MAX_SPOT_LIGHTS, MAX_POINT_LIGHTS, MAX_FOG_VOLUMES};
 
@@ -43,7 +44,8 @@ impl MasterRenderer {
         let mut primary_sun_intensity = 0.0;
 
         if is_playing {
-            let mut ubo = LightUBO {
+            // Initialize SSBO rather than UBO
+            let mut ssbo = LightSSBO {
                 ambient_color: glam::Vec4::new(ambient_color[0], ambient_color[1], ambient_color[2], ambient_intensity),
                 camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 0.0),
                 global_count: 0,
@@ -60,13 +62,13 @@ impl MasterRenderer {
             let mut shadow_caster_dir = None;
 
             for gl in global_lights {
-                if ubo.global_count < MAX_GLOBAL_LIGHTS as u32 {
-                    let idx = ubo.global_count as usize;
-                    ubo.global_lights[idx] = GlobalLightData {
+                if ssbo.global_count < MAX_GLOBAL_LIGHTS as u32 {
+                    let idx = ssbo.global_count as usize;
+                    ssbo.global_lights[idx] = GlobalLightData {
                         direction: glam::Vec4::new(gl.direction.x, gl.direction.y, gl.direction.z, gl.intensity),
                         color: glam::Vec4::new(gl.color[0], gl.color[1], gl.color[2], if gl.cast_shadows { 1.0 } else { 0.0 }),
                     };
-                    ubo.global_count += 1;
+                    ssbo.global_count += 1;
                     
                     if gl.cast_shadows && shadow_caster_dir.is_none() {
                         shadow_caster_dir = Some(gl.direction.normalize());
@@ -102,38 +104,38 @@ impl MasterRenderer {
             }
 
             for spot in spot_lights {
-                if ubo.spot_count < MAX_SPOT_LIGHTS as u32 {
-                    let idx = ubo.spot_count as usize;
-                    ubo.spot_lights[idx] = SpotLightData {
+                if ssbo.spot_count < MAX_SPOT_LIGHTS as u32 {
+                    let idx = ssbo.spot_count as usize;
+                    ssbo.spot_lights[idx] = SpotLightData {
                         position: glam::Vec4::new(spot.position.x, spot.position.y, spot.position.z, spot.range),
                         direction: glam::Vec4::new(spot.direction.x, spot.direction.y, spot.direction.z, spot.intensity),
                         color: glam::Vec4::new(spot.color[0], spot.color[1], spot.color[2], spot.inner_cone_angle),
                         params: glam::Vec4::new(spot.outer_cone_angle, if spot.cast_shadows { 1.0 } else { 0.0 }, 0.0, 0.0),
                     };
-                    ubo.spot_count += 1;
+                    ssbo.spot_count += 1;
                 }
             }
 
             for point in point_lights {
-                if ubo.point_count < MAX_POINT_LIGHTS as u32 {
-                    let idx = ubo.point_count as usize;
-                    ubo.point_lights[idx] = PointLightData {
+                if ssbo.point_count < MAX_POINT_LIGHTS as u32 {
+                    let idx = ssbo.point_count as usize;
+                    ssbo.point_lights[idx] = PointLightData {
                         position: glam::Vec4::new(point.position.x, point.position.y, point.position.z, point.range),
                         color: glam::Vec4::new(point.color[0], point.color[1], point.color[2], point.intensity),
                     };
-                    ubo.point_count += 1;
+                    ssbo.point_count += 1;
                 }
             }
 
             for fog in fog_volumes {
-                if ubo.fog_count < MAX_FOG_VOLUMES as u32 {
-                    let idx = ubo.fog_count as usize;
-                    ubo.fog_volumes[idx] = FogVolumeData {
+                if ssbo.fog_count < MAX_FOG_VOLUMES as u32 {
+                    let idx = ssbo.fog_count as usize;
+                    ssbo.fog_volumes[idx] = FogVolumeData {
                         min_bounds: glam::Vec4::new(fog.min_bounds.x, fog.min_bounds.y, fog.min_bounds.z, 0.0),
                         max_bounds: glam::Vec4::new(fog.max_bounds.x, fog.max_bounds.y, fog.max_bounds.z, 0.0),
                         color_density: glam::Vec4::new(fog.color[0], fog.color[1], fog.color[2], fog.density),
                     };
-                    ubo.fog_count += 1;
+                    ssbo.fog_count += 1;
                 }
             }
 
@@ -144,7 +146,7 @@ impl MasterRenderer {
 
             self.vertex_buffer.upload_data(allocator, &all_vertices)?;
             self.index_buffer.upload_data(allocator, &all_indices)?;
-            self.uniform_buffer.upload_data(allocator, &[ubo])?;
+            self.ssbo_buffer.upload_data(allocator, &[ssbo])?; // Push to SSBO buffer safely
         }
 
         Ok(FrameData { draw_calls, light_space_matrix, primary_sun_dir, primary_sun_color, primary_sun_intensity })

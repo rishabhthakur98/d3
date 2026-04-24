@@ -9,9 +9,9 @@ use glam::Quat;
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
 use crate::vulkan_logic::memory::vertex_setup::VertexSetup;
-use crate::vulkan_logic::config::paths; // FIXED IMPORT
+use crate::vulkan_logic::config::paths; 
 
-use crate::water::ubo::{RiverUBO, RiverData, RiverPushConstants};
+use crate::water::ssbo::{RiverSSBO, RiverData, RiverPushConstants};
 use crate::water::config::RiverConfig;
 use crate::water::river_mesh::RiverMesh;
 
@@ -22,7 +22,7 @@ pub struct RiverSystem {
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
     
-    pub ubo_buffer: DynamicBuffer,
+    pub ssbo_buffer: DynamicBuffer,
     pub vertex_buffer: DynamicBuffer,
     pub index_buffer: DynamicBuffer,
     pub index_count: u32,
@@ -40,31 +40,30 @@ impl RiverSystem {
 
         let mut vertex_buffer = DynamicBuffer::new(allocator, std::mem::size_of_val(&mesh.vertices[0]) * mesh.vertices.len(), vk::BufferUsageFlags::VERTEX_BUFFER)?;
         let mut index_buffer = DynamicBuffer::new(allocator, std::mem::size_of_val(&mesh.indices[0]) * mesh.indices.len(), vk::BufferUsageFlags::INDEX_BUFFER)?;
-        let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<RiverUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        let ssbo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<RiverSSBO>(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
         vertex_buffer.upload_data(allocator, &mesh.vertices)?; 
         index_buffer.upload_data(allocator, &mesh.indices)?;
 
-        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
+        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("Failed to create layout: {}", e))?;
 
-        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
+        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
         let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("Failed to create pool: {}", e))?;
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("Failed to alloc sets: {}", e))?[0];
 
-        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer.buffer).offset(0).range(std::mem::size_of::<RiverUBO>() as u64);
-        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
+        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ssbo_buffer.buffer).offset(0).range(std::mem::size_of::<RiverSSBO>() as u64);
+        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
         let pc_range = vk::PushConstantRange::default().stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT).offset(0).size(std::mem::size_of::<RiverPushConstants>() as u32);
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout)).push_constant_ranges(std::slice::from_ref(&pc_range));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Failed to create pipeline layout: {}", e))?;
 
-        // USES CENTRALIZED SHADER PATHS
         let vert_code = Self::read_shader(paths::RIVER_VERT)?;
         let frag_code = Self::read_shader(paths::RIVER_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
@@ -108,7 +107,7 @@ impl RiverSystem {
             context.device.destroy_shader_module(frag_mod, None); 
         }
 
-        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer, vertex_buffer, index_buffer, index_count })
+        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ssbo_buffer, vertex_buffer, index_buffer, index_count })
     }
 
     pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, rivers: &[RiverConfig], view_proj: glam::Mat4, cam_pos: glam::Vec3, sun_dir: glam::Vec3, sun_color: [f32; 3], intensity: f32, time: f32) -> Result<()> {
@@ -119,24 +118,24 @@ impl RiverSystem {
         
         if rivers.is_empty() { return Ok(()); }
 
-        let mut ubo = RiverUBO {
+        let mut ssbo = RiverSSBO {
             view_proj, camera_pos: glam::Vec4::new(cam_pos.x, cam_pos.y, cam_pos.z, 1.0),
             light_dir: glam::Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, intensity),
             light_color: glam::Vec4::new(sun_color[0], sun_color[1], sun_color[2], 1.0),
-            river_count: 0, _pad: [0; 3], rivers: [RiverData::default(); 10],
+            river_count: 0, _pad: [0; 3], rivers: [RiverData::default(); crate::water::config::MAX_RIVERS],
         };
 
-        for (i, config) in rivers.iter().enumerate().take(10) {
-            ubo.rivers[i] = RiverData {
+        for (i, config) in rivers.iter().enumerate().take(crate::water::config::MAX_RIVERS) {
+            ssbo.rivers[i] = RiverData {
                 deep_color: glam::Vec4::from_array(config.deep_color), shallow_color: glam::Vec4::from_array(config.shallow_color),
                 foam_color: glam::Vec4::from_array(config.foam_color),
                 sky_reflection_color: glam::Vec4::new(config.sky_reflection_color[0], config.sky_reflection_color[1], config.sky_reflection_color[2], config.foam_blend_strength),
                 params: glam::Vec4::new(time, config.flow_speed, config.wave_strength, 0.0),
                 advanced_params1: glam::Vec4::new(config.specular_exponent, config.fresnel_power, config.normal_sample_dist, config.uv_scroll_speed),
             };
-            ubo.river_count += 1;
+            ssbo.river_count += 1;
         }
-        self.ubo_buffer.upload_data(allocator, &[ubo])?;
+        self.ssbo_buffer.upload_data(allocator, &[ssbo])?;
 
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
@@ -144,7 +143,7 @@ impl RiverSystem {
             context.device.cmd_bind_index_buffer(cmd, self.index_buffer.buffer, 0, vk::IndexType::UINT32);
             context.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
             
-            for (i, config) in rivers.iter().enumerate().take(10) {
+            for (i, config) in rivers.iter().enumerate().take(crate::water::config::MAX_RIVERS) {
                 let rot = Quat::from_euler(glam::EulerRot::XYZ, config.orientation.x, config.orientation.y, config.orientation.z);
                 let model = glam::Mat4::from_scale_rotation_translation(config.scale, rot, config.position);
                 
@@ -159,7 +158,7 @@ impl RiverSystem {
 
     pub fn destroy(&mut self, context: &VulkanContext) {
         unsafe {
-            if let Some(a) = context.allocator.as_ref() { self.ubo_buffer.destroy(a); self.vertex_buffer.destroy(a); self.index_buffer.destroy(a); }
+            if let Some(a) = context.allocator.as_ref() { self.ssbo_buffer.destroy(a); self.vertex_buffer.destroy(a); self.index_buffer.destroy(a); }
             context.device.destroy_descriptor_pool(self.descriptor_pool, None);
             context.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             context.device.destroy_pipeline(self.pipeline, None);

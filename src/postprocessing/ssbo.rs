@@ -1,7 +1,7 @@
-// src/postprocessing/ubo.rs
+// src/postprocessing/ssbo.rs
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct PostProcessUBO {
+pub struct PostProcessSSBO {
     pub enabled: f32,
     pub exposure: f32,
     pub gamma: f32,

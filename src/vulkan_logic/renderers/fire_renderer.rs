@@ -7,9 +7,9 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
-use crate::vulkan_logic::config::paths; // FIXED IMPORT
+use crate::vulkan_logic::config::paths; 
 
-use crate::fire::ubo::{FireUBO, FireParticleData};
+use crate::fire::ssbo::{FireSSBO, FireParticleData};
 use crate::fire::emitter::FireEmitter;
 use crate::fire::config::MAX_FIRE_PARTICLES;
 
@@ -19,34 +19,33 @@ pub struct FireSystem {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
-    pub ubo_buffer: DynamicBuffer,
+    pub ssbo_buffer: DynamicBuffer,
 }
 
 impl FireSystem {
     pub fn new(context: &VulkanContext, render_pass: vk::RenderPass) -> Result<Self> {
         let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator initialized")) };
 
-        let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<FireUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        let ssbo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<FireSSBO>(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
+        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("Layout failed: {}", e))?;
 
-        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
+        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
         let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("Pool failed: {}", e))?;
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("Desc Allocation failed: {}", e))?[0];
 
-        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer.buffer).offset(0).range(std::mem::size_of::<FireUBO>() as u64);
-        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
+        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ssbo_buffer.buffer).offset(0).range(std::mem::size_of::<FireSSBO>() as u64);
+        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Pipeline layout err: {}", e))?;
 
-        // USES CENTRALIZED SHADER PATHS
         let vert_code = Self::read_shader(paths::FIRE_VERT)?;
         let frag_code = Self::read_shader(paths::FIRE_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
@@ -83,7 +82,7 @@ impl FireSystem {
 
         unsafe { context.device.destroy_shader_module(vert_mod, None); context.device.destroy_shader_module(frag_mod, None); }
 
-        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
+        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ssbo_buffer })
     }
 
     pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, emitters: &[FireEmitter], view_proj: glam::Mat4, camera_view: glam::Mat4) -> Result<()> {
@@ -92,37 +91,37 @@ impl FireSystem {
 
         let inv_view = camera_view.inverse();
 
-        let mut ubo = FireUBO {
+        let mut ssbo = FireSSBO {
             view_proj, camera_right: inv_view.x_axis, camera_up: inv_view.y_axis, particle_count: 0, _pad: [0; 3],
             particles: [FireParticleData::default(); MAX_FIRE_PARTICLES],
         };
 
         for emitter in emitters {
             for p in &emitter.particles {
-                if ubo.particle_count < MAX_FIRE_PARTICLES as u32 {
-                    ubo.particles[ubo.particle_count as usize] = FireParticleData {
+                if ssbo.particle_count < MAX_FIRE_PARTICLES as u32 {
+                    ssbo.particles[ssbo.particle_count as usize] = FireParticleData {
                         position: glam::Vec4::new(p.position.x, p.position.y, p.position.z, p.scale),
                         color: glam::Vec4::new(p.color[0], p.color[1], p.color[2], p.alpha),
                     };
-                    ubo.particle_count += 1;
+                    ssbo.particle_count += 1;
                 }
             }
         }
         
-        if ubo.particle_count == 0 { return Ok(()); }
-        self.ubo_buffer.upload_data(allocator, &[ubo])?;
+        if ssbo.particle_count == 0 { return Ok(()); }
+        self.ssbo_buffer.upload_data(allocator, &[ssbo])?;
 
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             context.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
-            context.device.cmd_draw(cmd, 6, ubo.particle_count, 0, 0);
+            context.device.cmd_draw(cmd, 6, ssbo.particle_count, 0, 0);
         }
         Ok(())
     }
 
     pub fn destroy(&mut self, context: &VulkanContext) {
         unsafe {
-            if let Some(a) = context.allocator.as_ref() { self.ubo_buffer.destroy(a); }
+            if let Some(a) = context.allocator.as_ref() { self.ssbo_buffer.destroy(a); }
             context.device.destroy_descriptor_pool(self.descriptor_pool, None);
             context.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             context.device.destroy_pipeline(self.pipeline, None);

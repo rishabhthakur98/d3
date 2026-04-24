@@ -4,12 +4,7 @@
 layout(location = 0) out vec2 fragUV;
 
 void main() {
-    vec2 uvs[3] = vec2[](
-        vec2(-1.0, -1.0),
-        vec2(3.0, -1.0),
-        vec2(-1.0, 3.0)
-    );
-    
-    fragUV = uvs[gl_VertexIndex] * 0.5 + 0.5;
-    gl_Position = vec4(uvs[gl_VertexIndex], 0.0, 1.0);
+    vec2 uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+    fragUV = uv;
 }

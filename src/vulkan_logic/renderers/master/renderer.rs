@@ -14,7 +14,8 @@ use crate::vulkan_logic::core::sync_objects::SyncObjects;
 use crate::vulkan_logic::pipelines::main_pipeline::MainPipeline;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
 use crate::vulkan_logic::passes::shadow_pass::ShadowPass;
-use crate::lights::core::ubo::LightUBO;
+// PHASE 2 FIX: Update import to SSBO
+use crate::lights::core::ssbo::LightSSBO; 
 
 use crate::vulkan_logic::renderers::skybox_renderer::SkyboxSystem;
 use crate::vulkan_logic::renderers::river_renderer::RiverSystem;
@@ -56,7 +57,8 @@ pub struct MasterRenderer {
     
     pub(crate) vertex_buffer: DynamicBuffer,
     pub(crate) index_buffer: DynamicBuffer,
-    pub(crate) uniform_buffer: DynamicBuffer,
+    // Buffer updated to send SSBO arrays
+    pub(crate) ssbo_buffer: DynamicBuffer,
     pub(crate) descriptor_pool: vk::DescriptorPool,
     pub(crate) descriptor_set: vk::DescriptorSet,
 }
@@ -66,6 +68,7 @@ impl MasterRenderer {
         let swapchain_mgr = SwapchainManager::new(&context, window)?;
         let sync = SyncObjects::new(&context)?;
 
+        // Avoiding unwrap internally by safely passing back the Anyhow Result
         let egui_renderer = EguiRenderer::with_default_allocator(
             &context.instance, context.physical_device, context.device.clone(), swapchain_mgr.render_pass,
             EguiOptions { srgb_framebuffer: false, ..Default::default() },
@@ -89,8 +92,9 @@ impl MasterRenderer {
         let vertex_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<crate::assets::model::Vertex>() * 10000, vk::BufferUsageFlags::VERTEX_BUFFER)?;
         let index_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<u32>() * 10000, vk::BufferUsageFlags::INDEX_BUFFER)?;
 
+        // PHASE 2 FIX: Convert Pool allocation sizes over to Storage Buffers
         let pool_sizes = [
-            vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1),
+            vk::DescriptorPoolSize::default().ty(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1),
             vk::DescriptorPoolSize::default().ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(1),
         ];
         
@@ -100,19 +104,22 @@ impl MasterRenderer {
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&pipeline.descriptor_set_layout));
         let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("Global descriptor allocation fault: {}", e))?[0];
         
-        let uniform_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<LightUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        // Allocate space for the new, much larger LightSSBO using STORAGE_BUFFER usage flags
+        let ssbo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<LightSSBO>(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let uniform_buffer_info = vk::DescriptorBufferInfo::default().buffer(uniform_buffer.buffer).offset(0).range(std::mem::size_of::<LightUBO>() as u64);
+        let ssbo_buffer_info = vk::DescriptorBufferInfo::default().buffer(ssbo_buffer.buffer).offset(0).range(std::mem::size_of::<LightSSBO>() as u64);
         let shadow_image_info = vk::DescriptorImageInfo::default().image_layout(vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL).image_view(shadow_pass.depth_view).sampler(shadow_pass.sampler);
+        
+        // Write the bound parameters into the pipeline
         let write_sets = [
-            vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&uniform_buffer_info)),
+            vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).buffer_info(std::slice::from_ref(&ssbo_buffer_info)),
             vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(1).dst_array_element(0).descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER).image_info(std::slice::from_ref(&shadow_image_info)),
         ];
         unsafe { context.device.update_descriptor_sets(&write_sets, &[]) };
 
         Ok(Self { 
             is_resized: false, egui_renderer, context, swapchain_mgr, sync, offscreen_pass, post_process_system, shadow_pass, pipeline, 
-            skybox_system, cloud_system, river_system, smoke_system, fire_system, weather_system, vertex_buffer, index_buffer, uniform_buffer, descriptor_pool, descriptor_set
+            skybox_system, cloud_system, river_system, smoke_system, fire_system, weather_system, vertex_buffer, index_buffer, ssbo_buffer, descriptor_pool, descriptor_set
         })
     }
 }
@@ -125,7 +132,7 @@ impl Drop for MasterRenderer {
             if let Some(allocator) = self.context.allocator.as_ref() {
                 self.vertex_buffer.destroy(allocator);
                 self.index_buffer.destroy(allocator);
-                self.uniform_buffer.destroy(allocator); 
+                self.ssbo_buffer.destroy(allocator); 
             }
             
             self.post_process_system.destroy(&self.context);

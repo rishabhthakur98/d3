@@ -1,4 +1,4 @@
 // src/lights/core/mod.rs
 
 pub mod config;
-pub mod ubo;
+pub mod ssbo;

@@ -30,9 +30,10 @@ pub struct MainPipeline {
 impl MainPipeline {
     pub fn new(context: &VulkanContext, render_pass: vk::RenderPass, shadow_render_pass: vk::RenderPass) -> Result<Self> {
         // --- 1. DESCRIPTORS & LAYOUTS ---
-        let ubo_binding = vk::DescriptorSetLayoutBinding::default()
+        // PHASE 2 FIX: Switched from UNIFORM_BUFFER to STORAGE_BUFFER to allow massive particle arrays
+        let ssbo_binding = vk::DescriptorSetLayoutBinding::default()
             .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT);
 
@@ -42,7 +43,7 @@ impl MainPipeline {
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT);
 
-        let bindings = [ubo_binding, shadow_map_binding];
+        let bindings = [ssbo_binding, shadow_map_binding];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }

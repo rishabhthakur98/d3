@@ -1,7 +1,4 @@
 // src/vulkan_logic/config/paths.rs
-#![allow(dead_code)] 
-
-pub const SHADER_DIR: &str = "src/vulkan_logic/compiled_shaders/";
 
 // Main Geometry & Shadows
 pub const MAIN_VERT: &str = "src/vulkan_logic/compiled_shaders/triangle.vert.spv";
@@ -25,8 +22,6 @@ pub const WEATHER_FRAG: &str = "src/vulkan_logic/compiled_shaders/weather.frag.s
 // Water
 pub const RIVER_VERT: &str = "src/vulkan_logic/compiled_shaders/river.vert.spv";
 pub const RIVER_FRAG: &str = "src/vulkan_logic/compiled_shaders/river.frag.spv";
-pub const WATER_VERT: &str = "src/vulkan_logic/compiled_shaders/water.vert.spv";
-pub const WATER_FRAG: &str = "src/vulkan_logic/compiled_shaders/water.frag.spv";
 
 // Post Processing
 pub const POSTPROCESS_VERT: &str = "src/vulkan_logic/compiled_shaders/postprocess.vert.spv";

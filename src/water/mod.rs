@@ -1,3 +1,4 @@
+// src/water/mod.rs
 pub mod config;
-pub mod ubo;
+pub mod ssbo;
 pub mod river_mesh;

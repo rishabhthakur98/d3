@@ -1,7 +1,8 @@
-// src/skybox/ubo.rs
+// src/skybox/ssbo.rs
 
 use glam::{Vec4, Mat4};
 use super::config::{MAX_SKYBOX_DISCS, MAX_SKYBOX_CRESCENTS};
+
 /// Maps directly to the GLSL SkyboxDisc struct
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -27,10 +28,10 @@ impl Default for SkyboxCrescentData {
     fn default() -> Self { Self { direction: Vec4::ZERO, color: Vec4::ZERO, cutout_offset: Vec4::ZERO } }
 }
 
-/// The main payload sent to the GPU for generating the sky procedural colors. Must be 16-byte aligned!
+/// The main payload sent to the GPU for generating the sky procedural colors.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct SkyboxUBO {
+pub struct SkyboxSSBO {
     pub zenith_color: Vec4,
     pub horizon_color: Vec4,
     pub ground_color: Vec4,

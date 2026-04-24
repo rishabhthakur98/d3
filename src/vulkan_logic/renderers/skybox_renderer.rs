@@ -9,7 +9,7 @@ use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
 use crate::vulkan_logic::config::paths; 
 
-use crate::skybox::ubo::{SkyboxUBO, SkyboxDiscData, SkyboxCrescentData, SkyboxPushConstants};
+use crate::skybox::ssbo::{SkyboxSSBO, SkyboxDiscData, SkyboxCrescentData, SkyboxPushConstants};
 use crate::skybox::config::SkyboxConfig;
 
 pub struct SkyboxSystem {
@@ -18,7 +18,7 @@ pub struct SkyboxSystem {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
-    pub ubo_buffer: DynamicBuffer,
+    pub ssbo_buffer: DynamicBuffer,
 }
 
 impl SkyboxSystem {
@@ -28,22 +28,23 @@ impl SkyboxSystem {
             None => return Err(anyhow!("Vulkan memory allocator was not initialized")),
         };
 
-        let ubo_binding = vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT);
-        let bindings = [ubo_binding];
+        // PHASE 2 FIX: Convert UBO descriptor definitions over to STORAGE_BUFFER equivalents
+        let ssbo_binding = vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::FRAGMENT);
+        let bindings = [ssbo_binding];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("Failed to create skybox descriptor set layout: {}", e))?;
 
-        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
+        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
         let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("Failed to create skybox descriptor pool: {}", e))?;
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("Failed to allocate skybox descriptor sets: {}", e))?[0];
 
-        let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<SkyboxUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        let ssbo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<SkyboxSSBO>(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer.buffer).offset(0).range(std::mem::size_of::<SkyboxUBO>() as u64);
-        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
+        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ssbo_buffer.buffer).offset(0).range(std::mem::size_of::<SkyboxSSBO>() as u64);
+        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
         let push_constant_range = vk::PushConstantRange::default().stage_flags(vk::ShaderStageFlags::VERTEX).offset(0).size(std::mem::size_of::<SkyboxPushConstants>() as u32);
@@ -68,7 +69,6 @@ impl SkyboxSystem {
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
         
-        // FIXED: Renamed to `viewport` to match the pipeline builder variable reference
         let viewport = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
@@ -91,7 +91,7 @@ impl SkyboxSystem {
             context.device.destroy_shader_module(frag_module, None);
         }
 
-        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
+        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ssbo_buffer })
     }
 
     pub fn draw(&mut self, context: &VulkanContext, command_buffer: vk::CommandBuffer, extent: &vk::Extent2D, config: &SkyboxConfig, camera_view_matrix: glam::Mat4) -> Result<()> {
@@ -100,10 +100,9 @@ impl SkyboxSystem {
             None => return Err(anyhow!("Memory allocator missing during skybox draw")),
         };
 
-        // Pack the boolean into the .w component
         let render_ground_flag = if config.render_ground { 1.0 } else { 0.0 };
 
-        let mut ubo = SkyboxUBO {
+        let mut ssbo = SkyboxSSBO {
             zenith_color: glam::Vec4::new(config.zenith_color[0], config.zenith_color[1], config.zenith_color[2], 1.0),
             horizon_color: glam::Vec4::new(config.horizon_color[0], config.horizon_color[1], config.horizon_color[2], 1.0),
             ground_color: glam::Vec4::new(config.ground_color[0], config.ground_color[1], config.ground_color[2], render_ground_flag),
@@ -112,27 +111,27 @@ impl SkyboxSystem {
         };
 
         for disc in &config.discs {
-            if ubo.disc_count < 5 {
-                ubo.discs[ubo.disc_count as usize] = SkyboxDiscData {
+            if ssbo.disc_count < 5 {
+                ssbo.discs[ssbo.disc_count as usize] = SkyboxDiscData {
                     direction: glam::Vec4::new(disc.direction.x, disc.direction.y, disc.direction.z, disc.angular_size),
                     color: glam::Vec4::new(disc.color[0], disc.color[1], disc.color[2], disc.glow_intensity),
                 };
-                ubo.disc_count += 1;
+                ssbo.disc_count += 1;
             }
         }
 
         for crescent in &config.crescents {
-            if ubo.crescent_count < 5 {
-                ubo.crescents[ubo.crescent_count as usize] = SkyboxCrescentData {
+            if ssbo.crescent_count < 5 {
+                ssbo.crescents[ssbo.crescent_count as usize] = SkyboxCrescentData {
                     direction: glam::Vec4::new(crescent.direction.x, crescent.direction.y, crescent.direction.z, crescent.angular_size),
                     color: glam::Vec4::new(crescent.color[0], crescent.color[1], crescent.color[2], crescent.cutout_size),
                     cutout_offset: glam::Vec4::new(crescent.cutout_offset.x, crescent.cutout_offset.y, crescent.cutout_offset.z, 0.0),
                 };
-                ubo.crescent_count += 1;
+                ssbo.crescent_count += 1;
             }
         }
 
-        self.ubo_buffer.upload_data(allocator, &[ubo])?;
+        self.ssbo_buffer.upload_data(allocator, &[ssbo])?;
 
         let mut sky_view = camera_view_matrix;
         sky_view.w_axis = glam::Vec4::new(0.0, 0.0, 0.0, 1.0); 
@@ -157,7 +156,7 @@ impl SkyboxSystem {
 
     pub fn destroy(&mut self, context: &VulkanContext) {
         unsafe {
-            if let Some(alloc) = context.allocator.as_ref() { self.ubo_buffer.destroy(alloc); }
+            if let Some(alloc) = context.allocator.as_ref() { self.ssbo_buffer.destroy(alloc); }
             context.device.destroy_descriptor_pool(self.descriptor_pool, None);
             context.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             context.device.destroy_pipeline(self.pipeline, None);

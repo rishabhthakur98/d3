@@ -7,9 +7,9 @@ use std::io::Read;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
-use crate::vulkan_logic::config::paths; // FIXED IMPORT
+use crate::vulkan_logic::config::paths; 
 
-use crate::weather::ubo::{WeatherUBO, WeatherParticleData};
+use crate::weather::ssbo::{WeatherSSBO, WeatherParticleData};
 use crate::weather::emitter::WeatherEmitter;
 use crate::weather::config::WeatherType;
 
@@ -19,34 +19,34 @@ pub struct WeatherSystem {
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
-    pub ubo_buffer: DynamicBuffer,
+    pub ssbo_buffer: DynamicBuffer,
 }
 
 impl WeatherSystem {
     pub fn new(context: &VulkanContext, render_pass: vk::RenderPass) -> Result<Self> {
         let allocator = match context.allocator.as_ref() { Some(a) => a, None => return Err(anyhow!("No allocator")) };
 
-        let ubo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<WeatherUBO>(), vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+        // Ensure we request STORAGE_BUFFER memory usage capabilities on the hardware
+        let ssbo_buffer = DynamicBuffer::new(allocator, std::mem::size_of::<WeatherSSBO>(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
 
-        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
+        let bindings = [vk::DescriptorSetLayoutBinding::default().binding(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)];
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
         let descriptor_set_layout = unsafe { context.device.create_descriptor_set_layout(&layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
-        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(1)];
+        let pool_sizes = [vk::DescriptorPoolSize::default().ty(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1)];
         let pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(1);
         let descriptor_pool = unsafe { context.device.create_descriptor_pool(&pool_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
         let alloc_info = vk::DescriptorSetAllocateInfo::default().descriptor_pool(descriptor_pool).set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let descriptor_set = unsafe { context.device.allocate_descriptor_sets(&alloc_info) }.map_err(|e| anyhow!("{}", e))?[0];
 
-        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ubo_buffer.buffer).offset(0).range(std::mem::size_of::<WeatherUBO>() as u64);
-        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::UNIFORM_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
+        let buffer_info = vk::DescriptorBufferInfo::default().buffer(ssbo_buffer.buffer).offset(0).range(std::mem::size_of::<WeatherSSBO>() as u64);
+        let write_set = vk::WriteDescriptorSet::default().dst_set(descriptor_set).dst_binding(0).dst_array_element(0).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).buffer_info(std::slice::from_ref(&buffer_info));
         unsafe { context.device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
 
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("{}", e))?;
 
-        // USES CENTRALIZED SHADER PATHS
         let vert_code = Self::read_shader(paths::WEATHER_VERT)?;
         let frag_code = Self::read_shader(paths::WEATHER_FRAG)?;
         let vert_mod = Self::create_module(&context.device, &vert_code)?;
@@ -84,7 +84,7 @@ impl WeatherSystem {
 
         unsafe { context.device.destroy_shader_module(vert_mod, None); context.device.destroy_shader_module(frag_mod, None); }
 
-        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ubo_buffer })
+        Ok(Self { pipeline_layout, pipeline, descriptor_set_layout, descriptor_pool, descriptor_set, ssbo_buffer })
     }
 
     pub fn draw(&mut self, context: &VulkanContext, cmd: vk::CommandBuffer, emitters: &[WeatherEmitter], view_proj: glam::Mat4, camera_view: glam::Mat4, camera_pos: glam::Vec3, time: f32) -> Result<()> {
@@ -93,10 +93,10 @@ impl WeatherSystem {
 
         let inv_view = camera_view.inverse();
 
-        let mut ubo = WeatherUBO {
+        let mut ssbo = WeatherSSBO {
             view_proj, camera_pos: glam::Vec4::new(camera_pos.x, camera_pos.y, camera_pos.z, 1.0),
             camera_right: inv_view.x_axis, camera_up: inv_view.y_axis, particle_count: 0, _pad: [0; 3],
-            particles: [WeatherParticleData::default(); 3000],
+            particles: [WeatherParticleData::default(); crate::weather::config::MAX_WEATHER_PARTICLES],
         };
 
         for emitter in emitters {
@@ -104,32 +104,32 @@ impl WeatherSystem {
             let is_rain = if emitter.config.weather_type == WeatherType::Rain { 1.0 } else { 0.0 };
             
             for p in &emitter.particles {
-                if ubo.particle_count < 3000 {
-                    ubo.particles[ubo.particle_count as usize] = WeatherParticleData {
+                if ssbo.particle_count < crate::weather::config::MAX_WEATHER_PARTICLES as u32 {
+                    ssbo.particles[ssbo.particle_count as usize] = WeatherParticleData {
                         position: glam::Vec4::new(p.local_pos.x, p.local_pos.y, p.local_pos.z, p.random_seed),
                         color: glam::Vec4::from_array(emitter.config.color),
                         params: glam::Vec4::new(emitter.config.particle_scale, emitter.config.fall_speed, is_rain, time),
                     };
-                    ubo.particle_count += 1;
+                    ssbo.particle_count += 1;
                 }
             }
         }
 
-        if ubo.particle_count == 0 { return Ok(()); }
+        if ssbo.particle_count == 0 { return Ok(()); }
 
-        self.ubo_buffer.upload_data(allocator, &[ubo])?;
+        self.ssbo_buffer.upload_data(allocator, &[ssbo])?;
 
         unsafe {
             context.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
             context.device.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, std::slice::from_ref(&self.descriptor_set), &[]);
-            context.device.cmd_draw(cmd, 6, ubo.particle_count, 0, 0);
+            context.device.cmd_draw(cmd, 6, ssbo.particle_count, 0, 0);
         }
         Ok(())
     }
 
     pub fn destroy(&mut self, context: &VulkanContext) {
         unsafe {
-            if let Some(a) = context.allocator.as_ref() { self.ubo_buffer.destroy(a); }
+            if let Some(a) = context.allocator.as_ref() { self.ssbo_buffer.destroy(a); }
             context.device.destroy_descriptor_pool(self.descriptor_pool, None);
             context.device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             context.device.destroy_pipeline(self.pipeline, None);

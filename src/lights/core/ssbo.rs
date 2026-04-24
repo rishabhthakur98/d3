@@ -1,4 +1,4 @@
-// src/lights/core/ubo.rs
+// src/lights/core/ssbo.rs
 
 use glam::Vec4;
 use super::config::{MAX_GLOBAL_LIGHTS, MAX_SPOT_LIGHTS, MAX_POINT_LIGHTS, MAX_FOG_VOLUMES};
@@ -26,7 +26,6 @@ pub struct PointLightData {
     pub color: Vec4,     // xyz: Color, w: Intensity
 }
 
-// NEW: Data mapped to the GLSL Fog Volume Raymarcher
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct FogVolumeData {
@@ -40,10 +39,10 @@ impl Default for SpotLightData { fn default() -> Self { Self { position: Vec4::Z
 impl Default for PointLightData { fn default() -> Self { Self { position: Vec4::ZERO, color: Vec4::ZERO } } }
 impl Default for FogVolumeData { fn default() -> Self { Self { min_bounds: Vec4::ZERO, max_bounds: Vec4::ZERO, color_density: Vec4::ZERO } } }
 
-/// The main payload sent to the GPU every frame. 
+/// The main payload sent to the GPU every frame via SSBO. 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct LightUBO {
+pub struct LightSSBO {
     pub ambient_color: Vec4, 
     pub camera_pos: Vec4,    
     
