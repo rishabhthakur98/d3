@@ -8,6 +8,11 @@ use crate::game::world01::controls::InputState;
 use crate::game::world01::world_streamer::WorldStreamer;
 use crate::game::world01::camera::FreeformCamera;
 use crate::lights::global::directional::GlobalLight;
+
+// Automatically import your localized world configurations
+use crate::game::world01::skybox_config::get_skybox_config;
+use crate::game::world01::postprocess_config::get_postprocess_config;
+
 use crate::skybox::config::SkyboxConfig;
 use crate::postprocessing::config::PostProcessConfig;
 use crate::vulkan_logic::core::context::VulkanContext;
@@ -30,8 +35,8 @@ pub struct EngineApp {
     pub ambient_color: [f32; 3],
     pub ambient_intensity: f32,
     pub global_lights: Vec<GlobalLight>,
-    pub skybox_config: SkyboxConfig,
     
+    pub skybox_config: SkyboxConfig,
     pub post_process_config: PostProcessConfig,
 
     pub engine_start_time: Instant, 
@@ -42,14 +47,31 @@ pub struct EngineApp {
 impl Default for EngineApp {
     fn default() -> Self {
         Self {
-            renderer: None, context: None, window: None, 
-            menu: MenuSystem::new(), egui_ctx: egui::Context::default(), egui_state: None,
-            is_playing: false, input_state: InputState::default(),
-            world_streamer: WorldStreamer::new(), camera: FreeformCamera::default(),
-            ambient_color: [0.0, 0.0, 0.0], ambient_intensity: 0.0, global_lights: Vec::new(),
-            skybox_config: SkyboxConfig::default(), 
-            post_process_config: PostProcessConfig::default(),
-            engine_start_time: Instant::now(), last_update_time: Instant::now(), last_frame_time: Instant::now(),
+            renderer: None, 
+            context: None, 
+            window: None, 
+            menu: MenuSystem::new(), 
+            egui_ctx: egui::Context::default(), 
+            egui_state: None,
+            is_playing: false, 
+            input_state: InputState::default(),
+            world_streamer: WorldStreamer::new(), 
+            camera: FreeformCamera::default(),
+            ambient_color: [0.0, 0.0, 0.0], 
+            ambient_intensity: 0.0, 
+            global_lights: Vec::new(),
+            
+            // ------------------------------------------------------------------------
+            // AUTOMATIC CONFIGURATION BINDING
+            // The engine now automatically pulls your world configs on boot!
+            // No manual assignment lines required anywhere else in the codebase.
+            // ------------------------------------------------------------------------
+            skybox_config: get_skybox_config(), 
+            post_process_config: get_postprocess_config(),
+            
+            engine_start_time: Instant::now(), 
+            last_update_time: Instant::now(), 
+            last_frame_time: Instant::now(),
         }
     }
 }

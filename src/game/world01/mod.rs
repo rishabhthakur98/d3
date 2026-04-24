@@ -9,3 +9,6 @@ pub mod skybox_config;
 // Added newly split localized lighting settings
 pub mod ambient_light_config;
 pub mod global_light_config;
+
+// Added localized post-processing settings
+pub mod postprocess_config;
