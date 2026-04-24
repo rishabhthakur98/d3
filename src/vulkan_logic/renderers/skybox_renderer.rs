@@ -7,7 +7,7 @@ use std::ffi::CStr;
 
 use crate::vulkan_logic::core::context::VulkanContext;
 use crate::vulkan_logic::memory::gpu_buffers::DynamicBuffer;
-use crate::vulkan_logic::config::paths; // FIXED IMPORT
+use crate::vulkan_logic::config::paths; 
 
 use crate::skybox::ubo::{SkyboxUBO, SkyboxDiscData, SkyboxCrescentData, SkyboxPushConstants};
 use crate::skybox::config::SkyboxConfig;
@@ -50,7 +50,6 @@ impl SkyboxSystem {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&descriptor_set_layout)).push_constant_ranges(std::slice::from_ref(&push_constant_range));
         let pipeline_layout = unsafe { context.device.create_pipeline_layout(&pipeline_layout_info, None) }.map_err(|e| anyhow!("Failed to create skybox pipeline layout: {}", e))?;
 
-        // USES CENTRALIZED SHADER PATHS
         let vert_shader_code = Self::read_shader_file(paths::SKYBOX_VERT)?;
         let frag_shader_code = Self::read_shader_file(paths::SKYBOX_FRAG)?;
 
@@ -67,8 +66,10 @@ impl SkyboxSystem {
         let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-        let viewport_state = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
+        let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+        
+        // FIXED: Renamed to `viewport` to match the pipeline builder variable reference
+        let viewport = vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
         
         let rasterizer = vk::PipelineRasterizationStateCreateInfo::default().polygon_mode(vk::PolygonMode::FILL).cull_mode(vk::CullModeFlags::NONE).line_width(1.0);
         let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(false).depth_write_enable(false);
@@ -79,8 +80,8 @@ impl SkyboxSystem {
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_stages).vertex_input_state(&vertex_input_info).input_assembly_state(&input_assembly)
-            .viewport_state(&viewport_state).rasterization_state(&rasterizer).multisample_state(&multisampling)
-            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blending).dynamic_state(&dynamic_state)
+            .viewport_state(&viewport).rasterization_state(&rasterizer).multisample_state(&multisampling)
+            .depth_stencil_state(&depth_stencil).color_blend_state(&color_blending).dynamic_state(&dynamic_state_info)
             .layout(pipeline_layout).render_pass(render_pass).subpass(0);
 
         let pipeline = unsafe { context.device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }.map_err(|e| anyhow!("Failed to create skybox pipeline: {:?}", e.1))?[0];
@@ -99,10 +100,13 @@ impl SkyboxSystem {
             None => return Err(anyhow!("Memory allocator missing during skybox draw")),
         };
 
+        // Pack the boolean into the .w component
+        let render_ground_flag = if config.render_ground { 1.0 } else { 0.0 };
+
         let mut ubo = SkyboxUBO {
             zenith_color: glam::Vec4::new(config.zenith_color[0], config.zenith_color[1], config.zenith_color[2], 1.0),
             horizon_color: glam::Vec4::new(config.horizon_color[0], config.horizon_color[1], config.horizon_color[2], 1.0),
-            ground_color: glam::Vec4::new(config.ground_color[0], config.ground_color[1], config.ground_color[2], 1.0),
+            ground_color: glam::Vec4::new(config.ground_color[0], config.ground_color[1], config.ground_color[2], render_ground_flag),
             disc_count: 0, crescent_count: 0, _pad: [0; 2],
             discs: [SkyboxDiscData::default(); 5], crescents: [SkyboxCrescentData::default(); 5],
         };

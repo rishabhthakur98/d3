@@ -10,6 +10,7 @@ pub fn get_skybox_config() -> SkyboxConfig {
         zenith_color: [0.05, 0.15, 0.4], 
         horizon_color: [0.5, 0.6, 0.7], 
         ground_color: [0.1, 0.1, 0.1],
+        render_ground: false,
         
         discs: vec![
             // Primary warm sun

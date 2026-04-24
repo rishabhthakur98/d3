@@ -9,7 +9,12 @@ pub const MAX_SKYBOX_CRESCENTS: usize = 5;
 pub struct SkyboxConfig {
     pub zenith_color: [f32; 3],  
     pub horizon_color: [f32; 3], 
+    
+    /// The color of the ground hemisphere
     pub ground_color: [f32; 3],  
+    /// If false, creates a full 360-degree skybox (like space) by mirroring the zenith color downwards
+    pub render_ground: bool,     
+
     pub discs: Vec<SkyDisc>,
     pub crescents: Vec<SkyCrescent>,
 }
@@ -20,6 +25,7 @@ impl Default for SkyboxConfig {
             zenith_color: [0.0, 0.0, 0.0],
             horizon_color: [0.0, 0.0, 0.0],
             ground_color: [0.0, 0.0, 0.0],
+            render_ground: true, // Default to true to not break existing terrestrial levels
             discs: Vec::new(),
             crescents: Vec::new(),
         }
