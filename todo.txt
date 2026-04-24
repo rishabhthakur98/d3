@@ -20,6 +20,49 @@ Why you need it: Currently, your 2K shadow map is stretched over the whole world
 
 
 
+No, you cannot make these limits infinite. In Vulkan and systems programming, these hardcoded compile-time limits exist due to strict hardware constraints, memory pre-allocation rules, and performance ceilings. Here is a detailed breakdown of why these limits are absolutely necessary in your current architecture:
+
+1. The UBO Hardware Limit (The Biggest Blocker)
+In your code, you are sending data to the GPU using Uniform Buffer Objects (UBOs) (e.g., SmokeUBO, SkyboxUBO).
+
+Vulkan strictly dictates how much data a UBO can hold. The Vulkan specification only guarantees a minimum maximum size of 65,536 bytes (64 KB) across all GPUs.
+
+A single ParticleData struct uses 32 bytes (two Vec4s).
+
+If you set MAX_SMOKE_PARTICLES to 5,000, the array takes up 160,000 bytes.
+
+This immediately blows past the 64 KB hardware limit on many GPUs. Vulkan will instantly crash or refuse to compile the pipeline when you try to bind a buffer that large as a Uniform Buffer.
+
+2. Vulkan Demands Explicit Memory Layouts
+Vulkan is a low-level explicit API. When you create your VkDescriptorSetLayout and VkPipeline, Vulkan needs to know exactly how many bytes it needs to wire into the shader registers.
+
+In GLSL, ParticleData particles[MAX_SMOKE_PARTICLES]; inside a layout(uniform) block must have a strictly known, fixed size at compile time.
+
+If the size was infinite or dynamically resizing on the fly, the GPU would not know how to map its memory registers.
+
+3. GPU Overdraw and Fill-Rate Limits
+Even if memory wasn't an issue, processing "infinite" particles causes a severe performance bottleneck known as Overdraw.
+
+Smoke, clouds, and fire rely on transparency (alpha blending).
+
+When you render thousands of transparent particles stacked on top of each other, the GPU has to calculate the color of the same pixel hundreds of times per frame.
+
+Pushing MAX_WEATHER_PARTICLES to something extreme like 500,000 will cause your frame rate to plummet from 60 FPS to 1 FPS because the GPU's rasterizer cannot physically paint pixels that fast.
+
+How modern AAA engines solve this (If you want MORE particles)
+If you eventually want millions of particles (like a massive blizzard or a dense volumetric smoke cloud), you cannot use UBOs. You have to upgrade your engine to use SSBOs (Shader Storage Buffer Objects) and Compute Shaders.
+
+Switch to SSBOs: Unlike UBOs (limited to ~64KB), SSBOs can hold gigabytes of data. They allow you to define arrays without limits in GLSL:
+
+OpenGL Shading Language
+layout(std430, binding = 0) buffer SmokeSSBO {
+    ParticleData particles[]; // No size limit!
+};
+Move logic to the GPU: Right now, your CPU (in Rust) calculates the wind, gravity, and lifetimes of particles, and uploads the entire array to the GPU every single frame. If you have 100,000 particles, you are choking the PCIe bus between your CPU and GPU. Modern engines use Compute Shaders to calculate particle physics entirely on the GPU so the data never has to cross the motherboard.
+
+Conclusion: For your current engine architecture, keep the pub const limits. They protect your game from crashing the GPU driver, exceeding PCIe bandwidth, and violating Vulkan's strict Uniform Buffer limits. If you need a few more (e.g., bumping Smoke to 1000), you can do so, provided the total struct size stays under ~64KB.
+
+
 
 
 
