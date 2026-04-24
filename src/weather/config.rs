@@ -37,6 +37,7 @@ impl Default for WeatherConfig {
 }
 
 impl WeatherConfig {
+    #[allow(dead_code)]
     pub fn heavy_rain() -> Self {
         Self {
             weather_type: WeatherType::Rain,
